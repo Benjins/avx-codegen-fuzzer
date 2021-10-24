@@ -1,0 +1,26 @@
+{
+	"compilations": [
+		{
+			"compiler_exe": "clang++",
+			"compiler_args": ["^GENERATED_SOURCE_FILENAME^", "-march=native", "-O0", "-o", "^GENERATED_EXE_FILENAME^"]
+		},
+		{
+			"compiler_exe": "clang++",
+			"compiler_args": ["^GENERATED_SOURCE_FILENAME^", "-march=native", "-O1", "-o", "^GENERATED_EXE_FILENAME^"]
+		},
+		{
+			"compiler_exe": "clang++",
+			"compiler_args": ["^GENERATED_SOURCE_FILENAME^", "-march=native", "-O2", "-o", "^GENERATED_EXE_FILENAME^"]
+		},
+		{
+			"compiler_exe": "clang++",
+			"compiler_args": ["^GENERATED_SOURCE_FILENAME^", "-march=native", "-O3", "-o", "^GENERATED_EXE_FILENAME^"]
+		},
+		{
+			"compiler_exe": "clang++",
+			"compiler_args": ["^GENERATED_SOURCE_FILENAME^", "-march=native", "-Os", "-o", "^GENERATED_EXE_FILENAME^"]
+		}
+	],
+	"compilation_timeout_seconds" : 5,
+	"mode": "crash+diff",
+}
