@@ -22,5 +22,5 @@
 		}
 	],
 	"compilation_timeout_seconds" : 5,
-	"mode": "crash+diff",
+	"mode": "crash+diff"
 }

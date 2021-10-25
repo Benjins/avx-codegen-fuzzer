@@ -393,7 +393,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	let mut cpp_code = String::with_capacity(32*1024);
 
 	cpp_code.push_str("#define _CRT_SECURE_NO_WARNINGS\n\n");
-	cpp_code.push_str("#include <intrin.h>     \n");
+	cpp_code.push_str("#include <immintrin.h>\n");
 
 	// Shims
 	cpp_code.push_str("#if defined(__clang__)\n");
