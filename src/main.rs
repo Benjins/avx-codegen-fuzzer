@@ -2,6 +2,8 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use sha2::{Sha256, Digest};
 
@@ -190,7 +192,7 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	return input_string;
 }
 
-fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>, fuzz_mode : GenCodeFuzzMode) {
+fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
 	loop {
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
 		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
@@ -240,6 +242,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 		}
 
 		//print!("Finished one round of fuzzing.\n");
+		total_num_cases_done.fetch_add(1, Ordering::SeqCst);
 	}
 }
 
@@ -287,6 +290,8 @@ fn fuzz_simd_codegen(config_filename : &str) {
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
+	let num_cases_state = Arc::new(AtomicUsize::new(0));
+	
 	for thread_index in 0..NUM_THREADS {
 		let mut compilation_tests = compilation_tests.clone();
 
@@ -314,14 +319,27 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 		let shared_type_to_intrinsics_map = shared_type_to_intrinsics_map.clone();
 		let fuzz_mode = fuzz_mode.clone();
+		let num_cases_state = num_cases_state.clone();
+		
 		let thread_handle = std::thread::spawn(move || {
-			fuzz_simd_codegen_loop(&shared_type_to_intrinsics_map, &compilation_tests, &runtime_tests, fuzz_mode);
+			fuzz_simd_codegen_loop(&shared_type_to_intrinsics_map, &compilation_tests, &runtime_tests, fuzz_mode, num_cases_state);
 		});
 		thread_handles.push(thread_handle);
 	}
 	
-	print!("Done launching, would be cool if there was some real-time stats here but nah\n");
+	print!("Done launching\n");
 	
+	let start_time = Instant::now();
+	loop {
+		std::thread::sleep(Duration::from_secs(1));
+		let time_so_far = Instant::now().duration_since(start_time);
+		let seconds_so_far = time_so_far.as_secs_f32();
+		let num_cases_so_far = num_cases_state.load(Ordering::SeqCst);
+		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
+		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps\n", seconds_so_far, num_cases_so_far, avg_cases_per_second);
+	}
+	
+	// TODO: Uhhhh......yeah have some way of breaking out of the above loop  I guess? Ctrl-C?
 	for thread_handle in thread_handles {
 		thread_handle.join().expect("couldn't join one of the threads");
 	}
