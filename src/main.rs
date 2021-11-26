@@ -193,6 +193,7 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 }
 
 fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
+	//for _ in 0..500 {
 	loop {
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
 		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
@@ -210,33 +211,50 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			}
 			GenCodeResult::CompilerFailure(err_code,_,_) => {
 				print!("Got compiler failure error code {}, trying to minimize...\n", err_code);
-				let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
-				save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+				
+				let mut is_actual_error = true;
+				for _ in 0..3 {
+					let new_res = test_generated_code_compilation(&cpp_code, compilation_tests);
+					if !matches!(new_res, GenCodeResult::CompilerFailure(_,_,_)) {
+						is_actual_error = false;
+						break;
+					}
+				}
+				
+				if is_actual_error {
+					let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
+					save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+				}
+				else {
+					print!("Actually, the error was just spurious, so let's skip it for now.\n");
+				}
 			}
 			GenCodeResult::RuntimeFailure(_,_) => { panic!("??") }
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
 			GenCodeResult::Success => { /*Do nothing*/ }
 		}
 		
-		if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
-			const NUM_INPUTS_PER_CODEGEN : i32 = 10;
-			for _ in 0..NUM_INPUTS_PER_CODEGEN {
-				let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-				let res = test_generated_code_runtime(&runtime_tests, &input);
-				
-				match res {
-					GenCodeResult::CompilerTimeout => { panic!("??") }
-					GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
-					GenCodeResult::RuntimeFailure(err_code, _) => {
-						print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
-						panic!("Maybe implement this?");
+		if matches!(res, GenCodeResult::Success) {
+			if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
+				const NUM_INPUTS_PER_CODEGEN : i32 = 10;
+				for _ in 0..NUM_INPUTS_PER_CODEGEN {
+					let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+					let res = test_generated_code_runtime(&runtime_tests, &input);
+					
+					match res {
+						GenCodeResult::CompilerTimeout => { panic!("??") }
+						GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
+						GenCodeResult::RuntimeFailure(err_code, _) => {
+							print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
+							panic!("Maybe implement this?");
+						}
+						GenCodeResult::RuntimeDiff(_) => {
+							print!("Got runtime difference, trying to minimize....\n");
+							let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
+							save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+						}
+						GenCodeResult::Success => { /*Do nothing*/ }
 					}
-					GenCodeResult::RuntimeDiff(_) => {
-						print!("Got runtime difference, trying to minimize....\n");
-						let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
-						save_out_failure_info(&codegen_ctx, &min_ctx, &res);
-					}
-					GenCodeResult::Success => { /*Do nothing*/ }
 				}
 			}
 		}
@@ -343,6 +361,8 @@ fn fuzz_simd_codegen(config_filename : &str) {
 	for thread_handle in thread_handles {
 		thread_handle.join().expect("couldn't join one of the threads");
 	}
+	
+	print!("And, all thread loops exited, restarting fuzzer\n");
 }
 
 fn print_usage() {

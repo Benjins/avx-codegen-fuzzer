@@ -243,10 +243,11 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
-	const NUM_NODE_ITERATIONS : usize = 100;
+	//const NUM_NODE_ITERATIONS : usize = 100;
+	let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
 	const CHANCE_FOR_ZERO_NODE : f32 = 0.04;
 
-	for ii in 0..NUM_NODE_ITERATIONS {
+	for ii in 0..num_node_iterations {
 		if ii >= ctx.get_num_nodes() {
 			let _ = ctx.get_ref_of_type(ending_type, ii);
 		}
@@ -286,7 +287,7 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 		}
 	}
 	
-	for ii in NUM_NODE_ITERATIONS..ctx.get_num_nodes() {
+	for ii in num_node_iterations..ctx.get_num_nodes() {
 		if ctx.get_type_of_pending_node(ii).is_some() {
 			ctx.mark_node_as_entry(ii);
 		}
@@ -396,7 +397,10 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	cpp_code.push_str("#include <immintrin.h>\n");
 
 	// Shims
-	cpp_code.push_str("#if defined(__clang__)\n");
+	cpp_code.push_str("#if defined(_MSC_VER)\n");
+	cpp_code.push_str("#define _mm_cvtsi128_si64x _mm_cvtsi128_si64\n");
+	cpp_code.push_str("#define _mm_cvtsi64x_si128 _mm_cvtsi64_si128\n");
+	cpp_code.push_str("#elif defined(__clang__)\n");
 	cpp_code.push_str("#define _mm_cvtsi64x_si128 _mm_cvtsi64_si128\n");
 	cpp_code.push_str("#define _mm_cvtsi64x_sd _mm_cvtsi64_sd\n");
 	cpp_code.push_str("#define _mm_cvtsi128_si64x _mm_cvtsi128_si64\n");

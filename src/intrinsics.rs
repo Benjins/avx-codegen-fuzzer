@@ -118,6 +118,12 @@ pub fn get_underlying_simd_type(node_type : X86SIMDType) -> X86SIMDType {
 	else if matches!(node_type, X86SIMDType::M256i(X86SIMDEType::Mask)) {
 		X86SIMDType::M256i(X86SIMDEType::UInt32)
 	}
+	else if matches!(node_type, X86SIMDType::M256(X86SIMDEType::Mask)) {
+		X86SIMDType::M256(X86SIMDEType::Float32)
+	}
+	else if matches!(node_type, X86SIMDType::M256d(X86SIMDEType::Mask)) {
+		X86SIMDType::M256d(X86SIMDEType::Float64)
+	}
 	else {
 		node_type
 	}

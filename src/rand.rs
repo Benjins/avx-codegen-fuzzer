@@ -11,8 +11,15 @@ pub struct Rand {
 
 impl Rand{
 	pub fn new(seed: u64) -> Rand {
-		Rand{
-			state: seed
+		let mut new_seed = seed;
+		for _ in 0..50 {
+			new_seed = new_seed ^ (new_seed >> 12);
+			new_seed = new_seed ^ (new_seed << 25);
+			new_seed = new_seed ^ (new_seed >> 27);
+		}
+		
+		Rand {
+			state: new_seed
 		}
 	}
 
@@ -30,10 +37,9 @@ impl Rand{
 	}
 	
 	pub fn rand_size(&mut self) -> usize {
-		self.state ^= (self.state >> 12);
-		self.state ^= (self.state << 25);
-		self.state ^= (self.state >> 27);
-		return self.state as usize;
+		let lo = self.rand() as u64;
+		let hi = (self.rand() as u64) << 32;
+		return (hi | lo) as usize;
 	}
 }
 

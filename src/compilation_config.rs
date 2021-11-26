@@ -49,7 +49,11 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeo
 		if let Some(timeout_seconds) = timeout_seconds {
 			if Instant::now().duration_since(compile_start) > Duration::from_secs(timeout_seconds as u64) {
 				print!("'{}' process timed out (if Windows maybe check we aren't leaking something?)\n", exe);
-				child.kill().expect("Unable to kill child process");
+				let kill_res = child.kill();
+				
+				if kill_res.is_err() {
+					print!("Got error when killing process {:?}\n", kill_res);
+				}
 
 				// Let's see if this helps...
 				std::thread::sleep(Duration::from_millis(500));
