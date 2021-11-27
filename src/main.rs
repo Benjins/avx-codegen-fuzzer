@@ -229,19 +229,19 @@ fn add_opt_bait_profiling(orig_ctx : &X86SIMDCodegenCtx) -> (X86SIMDCodegenCtx, 
 	for _ in 0..10 {
 		let idx = (rng.rand_size() % (orig_ctx.intrinsics_sequence.len() - 1)) + 1;
 		if let Some(node_idx) = orig_ctx.maybe_get_node_of_type(orig_ctx.get_return_type(), idx, 0) {
-			assert!(node_idx != 0);
 			var_idx = node_idx;
 			break;
 		}
 	}
 
-	assert!(var_idx != 0);
-
 	let mut new_ctx = orig_ctx.clone();
-	new_ctx.intrinsics_sequence.drain(0..var_idx);
-	
-	offset_nodes_after_idx_in_ctx(&mut new_ctx, 0, (var_idx as isize) * -1);
-	
+
+	if var_idx != 0 {
+		new_ctx.intrinsics_sequence.drain(0..var_idx);
+		offset_nodes_after_idx_in_ctx(&mut new_ctx, 0, (var_idx as isize) * -1);
+		//print!("profiling var not 0\n");
+	}
+
 	return (new_ctx, var_idx);
 }
 
@@ -423,11 +423,24 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 							
 							if let GenCodeResult::Success(injected_output) = injected_runtime_res {
 								if injected_output == init_output {
-									print!("All good, output of injected context matches what's expected\n");
+									//print!("All good, output of injected context matches what's expected\n");
 								}
 								else {
 									print!("Uh oh...difference in injected output. We should save out the code etc.\n");
-									panic!("TODO");
+									let min_hex_hash_full = get_hex_hash_of_bytes(cpp_code.as_bytes());
+									let min_hex_hash = &min_hex_hash_full[0..10];
+									
+									let orig_code_filename = format!("fuzz_issues/opt_bait/{}_orig.cpp", min_hex_hash);
+									let bait_code_filename = format!("fuzz_issues/opt_bait/{}_bait.cpp", min_hex_hash);
+									let input_filename = format!("fuzz_issues/opt_bait/{}_input.input", min_hex_hash);
+									let orig_output_filename = format!("fuzz_issues/opt_bait/{}_orig.output", min_hex_hash);
+									let bait_output_filename = format!("fuzz_issues/opt_bait/{}_bait.output", min_hex_hash);
+									
+									std::fs::write(orig_code_filename, cpp_code).expect("couldn't write to file?");
+									std::fs::write(bait_code_filename, injected_cpp_code).expect("couldn't write to file?");
+									std::fs::write(input_filename, input).expect("couldn't write to file?");
+									std::fs::write(orig_output_filename, init_output).expect("couldn't write to file?");
+									std::fs::write(bait_output_filename, injected_output).expect("couldn't write to file?");
 								}
 							}
 							else {
@@ -496,7 +509,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 1;
+	const NUM_THREADS : u32 = 32;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	

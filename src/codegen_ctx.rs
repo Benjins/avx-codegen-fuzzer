@@ -448,8 +448,24 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	let mut num_f_vals : usize = 0;
 	let mut num_d_vals : usize = 0;
 
-	let return_type = if let X86SIMDCodegenNode::Produced(node_intrinsic) = &ctx.intrinsics_sequence[0] {
+	let mut return_node_idx = 0;
+	while return_node_idx < ctx.intrinsics_sequence.len() && matches!(ctx.intrinsics_sequence[return_node_idx], X86SIMDCodegenNode::OptBait(_)) {
+		return_node_idx += 1;
+	}
+	
+	if return_node_idx >= ctx.intrinsics_sequence.len() {
+		print!("Intrinsics sequence:\n{:?}\n", &ctx.intrinsics_sequence);
+		panic!("bad codegen ctx: could not find return node");
+	}
+
+	let return_type = if let X86SIMDCodegenNode::Produced(node_intrinsic) = &ctx.intrinsics_sequence[return_node_idx] {
 		node_intrinsic.intrinsic.return_type
+	}
+	else if let X86SIMDCodegenNode::Entry(node_type) = &ctx.intrinsics_sequence[return_node_idx] {
+		*node_type
+	}
+	else if let X86SIMDCodegenNode::Zero(node_type) = &ctx.intrinsics_sequence[return_node_idx] {
+		*node_type
 	}
 	else {
 		print!("Return node:\n{:?}\n", &ctx.intrinsics_sequence[0]);
@@ -553,7 +569,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 		}
 	}
 
-	cpp_code.push_str("\treturn var_0;\n");
+	write!(&mut cpp_code, "\treturn var_{};\n", return_node_idx).expect("");
 
 	cpp_code.push_str("}\n");
 	cpp_code.push_str("\n");
