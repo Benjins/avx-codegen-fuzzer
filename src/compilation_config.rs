@@ -24,7 +24,7 @@ enum ProcessResult {
 }
 
 pub enum GenCodeResult {
-	Success,
+	Success(String), // stdout of program
 	CompilerTimeout,
 	CompilerFailure(i32, String, String),
 	RuntimeFailure(String, i32),
@@ -101,7 +101,8 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 		}
 	}
 
-	return GenCodeResult::Success;
+	// TODO: Does having stdout for this make sense?
+	return GenCodeResult::Success("".to_string());
 }
 
 pub fn test_generated_code_runtime(runtimes : &Vec<TestRuntime>, input : &str) -> GenCodeResult {
@@ -133,17 +134,23 @@ pub fn test_generated_code_runtime(runtimes : &Vec<TestRuntime>, input : &str) -
 		}
 	}
 	
-	return GenCodeResult::Success;
+	let first_output = first_output.unwrap();
+	//print!("\n-------------\n{}\n------------\n", &first_output);
+	return GenCodeResult::Success(first_output);
 }
 
 #[derive(Debug, Clone)]
 pub enum GenCodeFuzzMode {
 	CrashOnly,
-	CrashAndDiff
+	CrashAndDiff,
+	CrashAndOptBait
 }
 
 fn parse_fuzz_mode(mode_str : &str) -> GenCodeFuzzMode {
-	if mode_str == "crash+diff" {
+	if mode_str == "crash+optbait" {
+		return GenCodeFuzzMode::CrashAndOptBait;
+	}
+	else if mode_str == "crash+diff" {
 		return GenCodeFuzzMode::CrashAndDiff;
 	}
 	else if mode_str == "crash" {

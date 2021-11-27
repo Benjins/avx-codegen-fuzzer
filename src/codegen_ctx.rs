@@ -48,6 +48,13 @@ pub struct X86SIMDCodegenIntrinsic {
 }
 
 #[derive(Debug, Clone)]
+pub struct X86SIMDOptBaitNode {
+	pub intrinsic : X86SIMDIntrinsic,
+	pub node_idx : usize,
+	pub mask : Vec<u8>
+}
+
+#[derive(Debug, Clone)]
 pub enum X86SIMDCodegenNode {
 	Immediate(X86BaseType, i64, f64),
 	ConstantImmediate(X86BaseType, u32),
@@ -55,7 +62,8 @@ pub enum X86SIMDCodegenNode {
 	Zero(X86SIMDType),
 	Produced(X86SIMDCodegenIntrinsic),
 	Pending(X86SIMDType),
-	NoOp // Used for minimization
+	NoOp, // Used for minimization
+	OptBait(X86SIMDOptBaitNode) // Used for opt-baiting
 }
 
 #[derive(Default, Clone)]
@@ -123,7 +131,8 @@ impl X86SIMDCodegenCtx {
 			X86SIMDCodegenNode::Produced(_) => None,
 			X86SIMDCodegenNode::Zero(_) => None,
 			X86SIMDCodegenNode::Pending(node_type) => Some(*node_type),
-			X86SIMDCodegenNode::NoOp => None
+			X86SIMDCodegenNode::NoOp => None,
+			X86SIMDCodegenNode::OptBait(_) => None
 		}
 	}
 	
@@ -233,6 +242,24 @@ impl X86SIMDCodegenCtx {
 			panic!("node at index {} has already been produced", node_idx);
 		}
 	}
+	
+	pub fn get_return_type(&self) -> X86SIMDType {
+		if let X86SIMDCodegenNode::Produced(intrinsic_node) = &self.intrinsics_sequence[0] {
+			return intrinsic_node.intrinsic.return_type;
+		}
+		else {
+			panic!("return node has not been produced when calling get_return_type");
+		}
+	}
+	
+	pub fn get_type_of_node(&self, node_idx : usize) -> X86SIMDType {
+		match &self.intrinsics_sequence[node_idx] {
+			X86SIMDCodegenNode::Produced(intrinsic_node) => { return intrinsic_node.intrinsic.return_type; }
+			X86SIMDCodegenNode::Entry(node_type) => { return *node_type; }
+			X86SIMDCodegenNode::Zero(node_type) => { return *node_type; }
+			_ => { panic!("Bad node index in get_type_of_node"); }
+		}
+	}
 }
 
 pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>) {
@@ -244,10 +271,12 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
 	//const NUM_NODE_ITERATIONS : usize = 100;
-	let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
+	const NUM_NODE_ITERATIONS : usize = 50;
+	//let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
 	const CHANCE_FOR_ZERO_NODE : f32 = 0.04;
 
-	for ii in 0..num_node_iterations {
+	for ii in 0..NUM_NODE_ITERATIONS {
+	//for ii in 0..num_node_iterations {
 		if ii >= ctx.get_num_nodes() {
 			let _ = ctx.get_ref_of_type(ending_type, ii);
 		}
@@ -287,7 +316,8 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 		}
 	}
 	
-	for ii in num_node_iterations..ctx.get_num_nodes() {
+	for ii in NUM_NODE_ITERATIONS..ctx.get_num_nodes() {
+	//for ii in num_node_iterations..ctx.get_num_nodes() {
 		if ctx.get_type_of_pending_node(ii).is_some() {
 			ctx.mark_node_as_entry(ii);
 		}
@@ -422,6 +452,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 		node_intrinsic.intrinsic.return_type
 	}
 	else {
+		print!("Return node:\n{:?}\n", &ctx.intrinsics_sequence[0]);
 		panic!("bad return node")
 	};
 
@@ -469,8 +500,8 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 					write!(&mut cpp_code, "\t{} var_{} = {}(", simd_type_to_cpp_type_name(intrinsic_node.intrinsic.return_type),
 						ii, intrinsic_node.intrinsic.intrinsic_name).expect("");
 				}
-				for (ii, ref_idx) in intrinsic_node.references.iter().enumerate() {
-					if ii > 0 {
+				for (ref_ii, ref_idx) in intrinsic_node.references.iter().enumerate() {
+					if ref_ii > 0 {
 						cpp_code.push_str(", ");
 					}
 
@@ -484,6 +515,40 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 				cpp_code.push_str(");\n");
 			}
 			X86SIMDCodegenNode::NoOp => { /*Do nothing*/ }
+			X86SIMDCodegenNode::OptBait(opt_bait_node) => {
+				
+				// __m128i var_33 = _mm_load_si128((const __m128i*)&iVals[16]);
+				// __m256i var_32 = _mm256_loadu_si256((const __m256i*)&iVals[24]);
+				
+				let load_func = if matches!(opt_bait_node.intrinsic.return_type, X86SIMDType::M128i(_)) {
+					"_mm_load_si128"
+				}
+				else if matches!(opt_bait_node.intrinsic.return_type, X86SIMDType::M256i(_)) {
+					"_mm256_loadu_si256"
+				}
+				else {
+					panic!("bad intrinsic return type")
+				};
+				
+				// Bah
+				let mask_type = if matches!(opt_bait_node.intrinsic.return_type, X86SIMDType::M128i(_)) {
+					"__m128i"
+				}
+				else if matches!(opt_bait_node.intrinsic.return_type, X86SIMDType::M256i(_)) {
+					"__m256i"
+				}
+				else {
+					panic!("bad intrinsic return type")
+				};
+				
+				write!(&mut cpp_code, "\talignas(64) unsigned char opt_bait_mask_{}_bytes[] = {{ ", ii).expect("");
+				for byte_val in opt_bait_node.mask.iter() {
+					write!(&mut cpp_code, "{},", byte_val).expect("");
+				}
+				write!(&mut cpp_code, "}};\n").expect("");
+				write!(&mut cpp_code, "\t{} opt_bait_mask_{} = {}((const {}*)opt_bait_mask_{}_bytes);\n", mask_type, ii, load_func, mask_type, ii).expect("");
+				write!(&mut cpp_code, "\tvar_{} = {}(var_{}, opt_bait_mask_{});\n", opt_bait_node.node_idx, opt_bait_node.intrinsic.intrinsic_name, opt_bait_node.node_idx, ii).expect("");
+			}
 			X86SIMDCodegenNode::Pending(_) => panic!("generating cpp code but node still pending")
 		}
 	}
@@ -510,7 +575,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	cpp_code.push_str("\tmemcpy(dest_buff, &ret, sizeof(ret));\n");
 
 	cpp_code.push_str("\tfor (int i = 0; i < sizeof(dest_buff); i++) {\n");
-	cpp_code.push_str("\t\tprintf(\"buff[%2d] = %02X\\n\", i, dest_buff[i]);\n");
+	cpp_code.push_str("\t\tprintf(\"%02X\\n\", i, dest_buff[i]);\n");
 	cpp_code.push_str("\t}\n");
 	
 	cpp_code.push_str("\treturn 0;\n");

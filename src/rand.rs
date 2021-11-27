@@ -1,3 +1,6 @@
+// Come on
+#![allow(unused_parens)]
+
 use std::arch::x86_64::{_rdtsc};
 
 // Adapted from Xorshift-64

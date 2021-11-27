@@ -1,3 +1,5 @@
+// :/
+#![allow(unused_parens)]
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -22,7 +24,8 @@ mod intrinsics;
 use intrinsics::*;
 
 mod codegen_ctx;
-use codegen_ctx::{X86SIMDCodegenCtx, generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
+use codegen_ctx::{X86SIMDCodegenCtx, X86SIMDCodegenNode, X86SIMDOptBaitNode};
+use codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
 
 fn check_minimized_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &GenCodeResult, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>) -> bool {
 	let (cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(codegen_ctx);
@@ -37,7 +40,7 @@ fn check_minimized_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : 
 	let res = test_generated_code_compilation(&cpp_code, compilation_tests);
 	
 	if let Some(input) = input {
-		if matches!(res, GenCodeResult::Success) {
+		if matches!(res, GenCodeResult::Success(_)) {
 			let res = test_generated_code_runtime(runtime_tests, input);
 			return std::mem::discriminant(&res) == std::mem::discriminant(expected_result);
 		}
@@ -192,6 +195,127 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	return input_string;
 }
 
+fn offset_nodes_after_idx_in_ctx(ctx: &mut X86SIMDCodegenCtx, start_idx : usize, amount : isize) {
+	// Clean up any references in nodes
+	for ctx_node in &mut ctx.intrinsics_sequence {
+		if let X86SIMDCodegenNode::Produced(ref mut intrinsic) = ctx_node {
+			for ref_idx in intrinsic.references.iter_mut() {
+				if *ref_idx >= start_idx {
+					*ref_idx = (*ref_idx as isize + amount) as usize;
+				}
+			}
+		}
+		else if let X86SIMDCodegenNode::OptBait(ref mut opt_bait_node) = ctx_node {
+			if opt_bait_node.node_idx >= start_idx {
+				opt_bait_node.node_idx = (opt_bait_node.node_idx as isize + amount) as usize;
+			}
+		}
+	}
+	
+	// Clean up any references in type_to_ref_idx
+	for (_simd_type, ref_indices) in ctx.type_to_ref_idx.iter_mut() {
+		for ref_idx in ref_indices.iter_mut() {
+			if *ref_idx >= start_idx {
+				*ref_idx = (*ref_idx as isize + amount) as usize;
+			}
+		}
+	} 
+}
+
+fn add_opt_bait_profiling(orig_ctx : &X86SIMDCodegenCtx) -> (X86SIMDCodegenCtx, usize) {
+	let mut rng = Rand::default();
+
+	let mut var_idx = 0;
+	for _ in 0..10 {
+		let idx = (rng.rand_size() % (orig_ctx.intrinsics_sequence.len() - 1)) + 1;
+		if let Some(node_idx) = orig_ctx.maybe_get_node_of_type(orig_ctx.get_return_type(), idx, 0) {
+			assert!(node_idx != 0);
+			var_idx = node_idx;
+			break;
+		}
+	}
+
+	assert!(var_idx != 0);
+
+	let mut new_ctx = orig_ctx.clone();
+	new_ctx.intrinsics_sequence.drain(0..var_idx);
+	
+	offset_nodes_after_idx_in_ctx(&mut new_ctx, 0, (var_idx as isize) * -1);
+	
+	return (new_ctx, var_idx);
+}
+
+fn get_and_mask_for_value(var_val : &Vec<u8>, rng : &mut Rand) -> Vec<u8> {
+	let mut mask = Vec::new();
+	for byte in var_val {
+		let mut mask_byte = 0;
+		for bit in 0..8 {
+			// If it's 1, we need to preserve it
+			// If it's a 0, we have a 70% chance to force it to 0, or a 30% to pretend to preserve it
+			if ((byte & (1 << bit)) != 0) || (rng.randf() < 0.3) {
+				mask_byte |= (1 << bit);
+			}
+		}
+
+		mask.push(mask_byte);
+	}
+	
+	return mask;
+}
+
+fn add_opt_bait_with_values(orig_ctx : &X86SIMDCodegenCtx, var_idx : usize, var_value : &Vec<u8>) -> X86SIMDCodegenCtx {
+	let mut new_ctx = orig_ctx.clone();
+
+	let var_type = orig_ctx.get_type_of_node(var_idx);
+
+	let mut rng = Rand::default();
+	
+	let and_mask = get_and_mask_for_value(var_value, &mut rng);
+
+	if matches!(var_type, X86SIMDType::M128i(_)) {
+		let fake_intrinsic = X86SIMDIntrinsic { intrinsic_name: "_mm_and_si128".to_string(), return_type: var_type, param_types : Vec::<X86SIMDType>::new() };
+		let opt_bait_node = X86SIMDOptBaitNode{ intrinsic : fake_intrinsic, node_idx: var_idx, mask: and_mask };
+		new_ctx.intrinsics_sequence.insert(var_idx, X86SIMDCodegenNode::OptBait(opt_bait_node));
+	}
+	else if matches!(var_type, X86SIMDType::M256i(_)) {
+		let fake_intrinsic = X86SIMDIntrinsic { intrinsic_name: "_mm256_and_si256".to_string(), return_type: var_type, param_types : Vec::<X86SIMDType>::new() };
+		let opt_bait_node = X86SIMDOptBaitNode{ intrinsic : fake_intrinsic, node_idx: var_idx, mask: and_mask };
+		new_ctx.intrinsics_sequence.insert(var_idx, X86SIMDCodegenNode::OptBait(opt_bait_node));
+	}
+	else {
+		panic!("Bad node type: right now only M128i and M256i")
+	}
+
+	//print!("Node before: {:?}\n", &new_ctx.intrinsics_sequence[var_idx]);
+	offset_nodes_after_idx_in_ctx(&mut new_ctx, var_idx, 1);
+	//print!("Node after(var_idx = {}): {:?}\n", var_idx, &new_ctx.intrinsics_sequence[var_idx]);
+
+	// TODO: at a few places 
+	// _mm_and_si128
+	// _mm_andnot_si128
+	// _mm256_and_si256
+	// _mm256_andnot_si256
+	// _mm_or_si128
+	// _mm256_or_si256
+	
+	
+	return new_ctx;
+}
+
+fn parse_profile_output(profile_output : &str) -> Vec<u8> {
+	let mut bytes = Vec::new();
+	for output_line in profile_output.split("\n") {
+		let output_line = output_line.trim_start();
+		let output_line = output_line.trim_end();
+		//print!("Line '{}'\n", output_line);
+		if output_line.len() > 0 {
+			bytes.push(u8::from_str_radix(output_line, 16).unwrap());
+		}
+	}
+	
+	return bytes;
+}
+
 fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
 	//for _ in 0..500 {
 	loop {
@@ -231,10 +355,10 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			}
 			GenCodeResult::RuntimeFailure(_,_) => { panic!("??") }
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
-			GenCodeResult::Success => { /*Do nothing*/ }
+			GenCodeResult::Success(_) => { /*Do nothing*/ }
 		}
 		
-		if matches!(res, GenCodeResult::Success) {
+		if matches!(res, GenCodeResult::Success(_)) {
 			if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
 				const NUM_INPUTS_PER_CODEGEN : i32 = 10;
 				for _ in 0..NUM_INPUTS_PER_CODEGEN {
@@ -253,11 +377,78 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 							let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
 							save_out_failure_info(&codegen_ctx, &min_ctx, &res);
 						}
-						GenCodeResult::Success => { /*Do nothing*/ }
+						GenCodeResult::Success(_) => { /*Do nothing*/ }
 					}
 				}
 			}
+			else if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
+				let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+				
+				// TODO: For now only doing one test. In theory, we could loop over all and do the same thing for them,
+				// though we don't care about diffs b/w the compiler settings, but with the original
+				let mut compilation_tests_init = Vec::new();
+				compilation_tests_init.push(compilation_tests[0].clone());
+				
+				let mut runtime_tests_init = Vec::new();
+				runtime_tests_init.push(runtime_tests[0].clone());
+				
+				let init_res = test_generated_code_runtime(&runtime_tests_init, &input);
+				
+				let mut init_output = "".to_string();
+				match init_res {
+					GenCodeResult::RuntimeFailure(err_code, _) => { panic!("runtime failure huh?"); }
+					GenCodeResult::Success(output) => { init_output = output; }
+					_ => { panic!("shouldn't happen lol"); }
+				}
+
+				let (profile_ctx,profiled_var) = add_opt_bait_profiling(&codegen_ctx);
+				
+				let (profile_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&profile_ctx);
+				
+				let profile_res = test_generated_code_compilation(&profile_cpp_code, &compilation_tests_init);
+				
+				if matches!(profile_res, GenCodeResult::Success(_)) {
+					let profile_run_res = test_generated_code_runtime(&runtime_tests_init, &input);
+					
+					if let GenCodeResult::Success(profile_output) = profile_run_res {
+						let var_bytes = parse_profile_output(&profile_output);
+						
+						// Inject "dead" code for that variable
+						
+						let injected_ctx = add_opt_bait_with_values(&codegen_ctx, profiled_var, &var_bytes);
+						let (injected_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&injected_ctx);
+						let injected_res = test_generated_code_compilation(&injected_cpp_code, &compilation_tests_init);
+						if matches!(injected_res, GenCodeResult::Success(_)) {
+							let injected_runtime_res = test_generated_code_runtime(&runtime_tests_init, &input);
+							
+							if let GenCodeResult::Success(injected_output) = injected_runtime_res {
+								if injected_output == init_output {
+									print!("All good, output of injected context matches what's expected\n");
+								}
+								else {
+									print!("Uh oh...difference in injected output. We should save out the code etc.\n");
+									panic!("TODO");
+								}
+							}
+							else {
+								panic!("Injected context messed up at runtime");
+							}
+						}
+						else {
+							panic!("Injected context messed up at compile time");
+						}
+					}
+					else {
+						panic!("Profile context messed up at runtime");
+					}
+				}
+				else {
+					panic!("Profile context messed up at compilation");
+				}
+			}
 		}
+		
+		
 
 		//print!("Finished one round of fuzzing.\n");
 		total_num_cases_done.fetch_add(1, Ordering::SeqCst);
@@ -298,13 +489,14 @@ fn fuzz_simd_codegen(config_filename : &str) {
 	};
 	
 	let (compilation_tests, fuzz_mode) = parse_compiler_config(&config_contents);
+	//print!("{:?}\n", compilation_tests);
 
 	let shared_type_to_intrinsics_map = Arc::new(type_to_intrinsics_map);
 
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 64;
+	const NUM_THREADS : u32 = 1;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
@@ -326,7 +518,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 		}
 
 		let mut runtime_tests = Vec::<TestRuntime>::with_capacity(compilation_tests.len());
-		if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
+		if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) || matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
 			// TODO: Less hacky way of doing this...esp. for threading
 			for ii in 0..compilation_tests.len() {
 				runtime_tests.push(TestRuntime {
@@ -358,11 +550,11 @@ fn fuzz_simd_codegen(config_filename : &str) {
 	}
 	
 	// TODO: Uhhhh......yeah have some way of breaking out of the above loop  I guess? Ctrl-C?
-	for thread_handle in thread_handles {
-		thread_handle.join().expect("couldn't join one of the threads");
-	}
-	
-	print!("And, all thread loops exited, restarting fuzzer\n");
+	//for thread_handle in thread_handles {
+	//	thread_handle.join().expect("couldn't join one of the threads");
+	//}
+	//
+	//print!("And, all thread loops exited, restarting fuzzer\n");
 }
 
 fn print_usage() {
