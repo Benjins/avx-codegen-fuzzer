@@ -263,42 +263,68 @@ fn get_and_mask_for_value(var_val : &Vec<u8>, rng : &mut Rand) -> Vec<u8> {
 	return mask;
 }
 
+fn get_or_mask_for_value(var_val : &Vec<u8>, rng : &mut Rand) -> Vec<u8> {
+	let mut mask = Vec::new();
+	for byte in var_val {
+		let mut mask_byte = 0;
+		for bit in 0..8 {
+			// If it's 0, we need to preserve it
+			// If it's a 1, we have a 70% chance to force it to 1, or a 30% to pretend to preserve it
+			if ((byte & (1 << bit)) != 0) && (rng.randf() >= 0.3) {
+				mask_byte |= (1 << bit);
+			}
+		}
+
+		mask.push(mask_byte);
+	}
+	
+	return mask;
+}
+
+fn get_opt_bait_node_for_var(var_type : &X86SIMDType, var_idx : usize, var_value : &Vec<u8>, rng : &mut Rand) -> X86SIMDCodegenNode {
+	let do_and_intrinsic = rng.randf() > 0.5;
+
+	let intrinsic_name = if matches!(var_type, X86SIMDType::M128i(_)) {
+		if do_and_intrinsic { "_mm_and_si128" } else { "_mm_or_si128" }
+	}
+	else if matches!(var_type, X86SIMDType::M256i(_)) {
+		if do_and_intrinsic { "_mm256_and_si256" } else { "_mm256_or_si256" }
+	}
+	else {
+		panic!("Bad node type: right now only M128i and M256i");
+	};
+	
+	let mask_val = if do_and_intrinsic {
+		get_and_mask_for_value(var_value, rng)
+	}
+	else {
+		get_or_mask_for_value(var_value, rng)
+	};
+
+	let fake_intrinsic = X86SIMDIntrinsic { intrinsic_name: intrinsic_name.to_string(), return_type: *var_type, param_types : Vec::<X86SIMDType>::new() };
+	let opt_bait_node = X86SIMDOptBaitNode{ intrinsic : fake_intrinsic, node_idx: var_idx, mask: mask_val };
+	return X86SIMDCodegenNode::OptBait(opt_bait_node);
+}
+
 fn add_opt_bait_with_values(orig_ctx : &X86SIMDCodegenCtx, var_idx : usize, var_value : &Vec<u8>) -> X86SIMDCodegenCtx {
 	let mut new_ctx = orig_ctx.clone();
 
 	let var_type = orig_ctx.get_type_of_node(var_idx);
 
 	let mut rng = Rand::default();
-	
-	let and_mask = get_and_mask_for_value(var_value, &mut rng);
 
-	if matches!(var_type, X86SIMDType::M128i(_)) {
-		let fake_intrinsic = X86SIMDIntrinsic { intrinsic_name: "_mm_and_si128".to_string(), return_type: var_type, param_types : Vec::<X86SIMDType>::new() };
-		let opt_bait_node = X86SIMDOptBaitNode{ intrinsic : fake_intrinsic, node_idx: var_idx, mask: and_mask };
-		new_ctx.intrinsics_sequence.insert(var_idx, X86SIMDCodegenNode::OptBait(opt_bait_node));
-	}
-	else if matches!(var_type, X86SIMDType::M256i(_)) {
-		let fake_intrinsic = X86SIMDIntrinsic { intrinsic_name: "_mm256_and_si256".to_string(), return_type: var_type, param_types : Vec::<X86SIMDType>::new() };
-		let opt_bait_node = X86SIMDOptBaitNode{ intrinsic : fake_intrinsic, node_idx: var_idx, mask: and_mask };
-		new_ctx.intrinsics_sequence.insert(var_idx, X86SIMDCodegenNode::OptBait(opt_bait_node));
-	}
-	else {
-		panic!("Bad node type: right now only M128i and M256i")
-	}
-
-	//print!("Node before: {:?}\n", &new_ctx.intrinsics_sequence[var_idx]);
+	new_ctx.intrinsics_sequence.insert(var_idx, get_opt_bait_node_for_var(&var_type, var_idx, var_value, &mut rng));
 	offset_nodes_after_idx_in_ctx(&mut new_ctx, var_idx, 1);
-	//print!("Node after(var_idx = {}): {:?}\n", var_idx, &new_ctx.intrinsics_sequence[var_idx]);
 
-	// TODO: at a few places 
-	// _mm_and_si128
-	// _mm_andnot_si128
-	// _mm256_and_si256
-	// _mm256_andnot_si256
-	// _mm_or_si128
-	// _mm256_or_si256
-	
-	
+	if var_idx > 0 {
+		let num_extra_baits = rng.rand() % 5;
+		for ii in 0..num_extra_baits {
+			let bait_index = rng.rand_size() % var_idx;
+			new_ctx.intrinsics_sequence.insert(bait_index, get_opt_bait_node_for_var(&var_type, var_idx + 1 + ii as usize, var_value, &mut rng));
+			offset_nodes_after_idx_in_ctx(&mut new_ctx, bait_index, 1);
+		}
+	}
+
 	return new_ctx;
 }
 
