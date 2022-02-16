@@ -535,7 +535,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 32;
+	const NUM_THREADS : u32 = 20;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	

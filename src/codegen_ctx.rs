@@ -591,7 +591,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	cpp_code.push_str("\tmemcpy(dest_buff, &ret, sizeof(ret));\n");
 
 	cpp_code.push_str("\tfor (int i = 0; i < sizeof(dest_buff); i++) {\n");
-	cpp_code.push_str("\t\tprintf(\"%02X\\n\", i, dest_buff[i]);\n");
+	cpp_code.push_str("\t\tprintf(\"%02X\\n\", dest_buff[i]);\n");
 	cpp_code.push_str("\t}\n");
 	
 	cpp_code.push_str("\treturn 0;\n");
