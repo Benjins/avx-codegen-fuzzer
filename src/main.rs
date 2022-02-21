@@ -420,12 +420,11 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 				
 				let init_res = test_generated_code_runtime(&runtime_tests_init, &input);
 				
-				let mut init_output = "".to_string();
-				match init_res {
-					GenCodeResult::RuntimeFailure(err_code, _) => { panic!("runtime failure huh?"); }
-					GenCodeResult::Success(output) => { init_output = output; }
+				let init_output = match init_res {
+					GenCodeResult::RuntimeFailure(_err_code, _) => { panic!("runtime failure huh?"); }
+					GenCodeResult::Success(output) => { output }
 					_ => { panic!("shouldn't happen lol"); }
-				}
+				};
 
 				let (profile_ctx,profiled_var) = add_opt_bait_profiling(&codegen_ctx);
 				
@@ -535,7 +534,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 20;
+	const NUM_THREADS : u32 = 10;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
