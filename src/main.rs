@@ -546,7 +546,6 @@ fn fuzz_simd_codegen(config_filename : &str) {
 		// Replace generic filenames with specific ones in the config
 		for (ii, compilation_test) in compilation_tests.iter_mut().enumerate() {
 			for compiler_arg in compilation_test.compiler_args.iter_mut() {
-				// TODO: Replace substring, to support MSVC /Fe arg
 				*compiler_arg = compiler_arg.replace("^GENERATED_SOURCE_FILENAME^", &format!("tmp/simd_gen_thr{}_test.cpp", thread_index));
 				*compiler_arg = compiler_arg.replace("^GENERATED_EXE_FILENAME^", &format!("tmp/simd_gen_thr{}_test_{}.exe", thread_index, ii));
 			}
