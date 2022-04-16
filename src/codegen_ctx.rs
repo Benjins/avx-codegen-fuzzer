@@ -243,7 +243,7 @@ impl X86SIMDCodegenCtx {
 		}
 	}
 	
-	pub fn get_return_type(&self) -> X86SIMDType {
+	pub fn get_return_type_old_dont_use(&self) -> X86SIMDType {
 		if let X86SIMDCodegenNode::Produced(intrinsic_node) = &self.intrinsics_sequence[0] {
 			return intrinsic_node.intrinsic.return_type;
 		}
@@ -260,6 +260,40 @@ impl X86SIMDCodegenCtx {
 			_ => { panic!("Bad node index in get_type_of_node"); }
 		}
 	}
+
+	pub fn get_return_node_idx(&self) -> usize {
+		let mut return_node_idx = 0;
+		while return_node_idx < self.intrinsics_sequence.len() && matches!(self.intrinsics_sequence[return_node_idx], X86SIMDCodegenNode::OptBait(_)) {
+			return_node_idx += 1;
+		}
+		
+		if return_node_idx >= self.intrinsics_sequence.len() {
+			print!("Intrinsics sequence:\n{:?}\n", &self.intrinsics_sequence);
+			panic!("bad codegen ctx: could not find return node");
+		}
+		
+		return return_node_idx;
+	}
+	
+	pub fn get_return_type(&self) -> X86SIMDType {
+		let return_node_idx = self.get_return_node_idx();
+
+		let return_type = if let X86SIMDCodegenNode::Produced(node_intrinsic) = &self.intrinsics_sequence[return_node_idx] {
+			node_intrinsic.intrinsic.return_type
+		}
+		else if let X86SIMDCodegenNode::Entry(node_type) = &self.intrinsics_sequence[return_node_idx] {
+			*node_type
+		}
+		else if let X86SIMDCodegenNode::Zero(node_type) = &self.intrinsics_sequence[return_node_idx] {
+			*node_type
+		}
+		else {
+			print!("Return node:\n{:?}\n", &self.intrinsics_sequence[0]);
+			panic!("bad return node")
+		};
+		
+		return return_type;
+	}
 }
 
 pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>) {
@@ -271,7 +305,7 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
 	//const NUM_NODE_ITERATIONS : usize = 100;
-	const NUM_NODE_ITERATIONS : usize = 50;
+	const NUM_NODE_ITERATIONS : usize = 30;
 	//let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
 	const CHANCE_FOR_ZERO_NODE : f32 = 0.04;
 
@@ -448,30 +482,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	let mut num_f_vals : usize = 0;
 	let mut num_d_vals : usize = 0;
 
-	let mut return_node_idx = 0;
-	while return_node_idx < ctx.intrinsics_sequence.len() && matches!(ctx.intrinsics_sequence[return_node_idx], X86SIMDCodegenNode::OptBait(_)) {
-		return_node_idx += 1;
-	}
-	
-	if return_node_idx >= ctx.intrinsics_sequence.len() {
-		print!("Intrinsics sequence:\n{:?}\n", &ctx.intrinsics_sequence);
-		panic!("bad codegen ctx: could not find return node");
-	}
-
-	let return_type = if let X86SIMDCodegenNode::Produced(node_intrinsic) = &ctx.intrinsics_sequence[return_node_idx] {
-		node_intrinsic.intrinsic.return_type
-	}
-	else if let X86SIMDCodegenNode::Entry(node_type) = &ctx.intrinsics_sequence[return_node_idx] {
-		*node_type
-	}
-	else if let X86SIMDCodegenNode::Zero(node_type) = &ctx.intrinsics_sequence[return_node_idx] {
-		*node_type
-	}
-	else {
-		print!("Return node:\n{:?}\n", &ctx.intrinsics_sequence[0]);
-		panic!("bad return node")
-	};
-
+	let return_type = ctx.get_return_type();
 	let return_type_name = simd_type_to_cpp_type_name(return_type);
 
 	cpp_code.push_str("#if defined(_MSC_VER)\n");
@@ -482,6 +493,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	cpp_code.push_str("#error \"Not supported compiler, need to add branch for no-inline attribute\"\n");
 	cpp_code.push_str("#endif\n");
 
+	write!(&mut cpp_code, "extern \"C\" {} do_stuff(const int* iVals, const float* fVals, const double* dVals);\n", return_type_name).expect("");
 	write!(&mut cpp_code, "{} do_stuff(const int* iVals, const float* fVals, const double* dVals) {{\n", return_type_name).expect("");
 
 	for (ii, node) in ctx.intrinsics_sequence.iter().enumerate().rev() {
@@ -569,33 +581,34 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 		}
 	}
 
+	let return_node_idx = ctx.get_return_node_idx();
 	write!(&mut cpp_code, "\treturn var_{};\n", return_node_idx).expect("");
 
 	cpp_code.push_str("}\n");
 	cpp_code.push_str("\n");
 	
-	cpp_code.push_str("int main() {\n");
-
-	write!(&mut cpp_code, "\talignas(64) int i_vals[{}] = {{}};\n", std::cmp::max(1, num_i_vals)).expect("");
-	write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%d\", &i_vals[i]); }}\n", num_i_vals).expect("");
-
-	write!(&mut cpp_code, "\talignas(64) float f_vals[{}] = {{}};\n", std::cmp::max(1, num_f_vals)).expect("");
-	write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%f\", &f_vals[i]); }}\n", num_f_vals).expect("");
-
-	write!(&mut cpp_code, "\talignas(64) double d_vals[{}] = {{}};\n", std::cmp::max(1, num_d_vals)).expect("");
-	write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%lf\", &d_vals[i]); }}\n", num_d_vals).expect("");
-
-	write!(&mut cpp_code, "\t{} ret = do_stuff(i_vals, f_vals, d_vals);\n", return_type_name).expect("");
-	
-	cpp_code.push_str("\talignas(64) unsigned char dest_buff[sizeof(ret)] = {};\n");
-	cpp_code.push_str("\tmemcpy(dest_buff, &ret, sizeof(ret));\n");
-
-	cpp_code.push_str("\tfor (int i = 0; i < sizeof(dest_buff); i++) {\n");
-	cpp_code.push_str("\t\tprintf(\"%02X\\n\", dest_buff[i]);\n");
-	cpp_code.push_str("\t}\n");
-	
-	cpp_code.push_str("\treturn 0;\n");
-	cpp_code.push_str("}\n");
+	//cpp_code.push_str("int main() {\n");
+	//
+	//write!(&mut cpp_code, "\talignas(64) int i_vals[{}] = {{}};\n", std::cmp::max(1, num_i_vals)).expect("");
+	//write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%d\", &i_vals[i]); }}\n", num_i_vals).expect("");
+	//
+	//write!(&mut cpp_code, "\talignas(64) float f_vals[{}] = {{}};\n", std::cmp::max(1, num_f_vals)).expect("");
+	//write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%f\", &f_vals[i]); }}\n", num_f_vals).expect("");
+	//
+	//write!(&mut cpp_code, "\talignas(64) double d_vals[{}] = {{}};\n", std::cmp::max(1, num_d_vals)).expect("");
+	//write!(&mut cpp_code, "\tfor (int i = 0; i < {}; i++) {{ scanf(\"%lf\", &d_vals[i]); }}\n", num_d_vals).expect("");
+	//
+	//write!(&mut cpp_code, "\t{} ret = do_stuff(i_vals, f_vals, d_vals);\n", return_type_name).expect("");
+	//
+	//cpp_code.push_str("\talignas(64) unsigned char dest_buff[sizeof(ret)] = {};\n");
+	//cpp_code.push_str("\tmemcpy(dest_buff, &ret, sizeof(ret));\n");
+	//
+	//cpp_code.push_str("\tfor (int i = 0; i < sizeof(dest_buff); i++) {\n");
+	//cpp_code.push_str("\t\tprintf(\"%02X\\n\", dest_buff[i]);\n");
+	//cpp_code.push_str("\t}\n");
+	//
+	//cpp_code.push_str("\treturn 0;\n");
+	//cpp_code.push_str("}\n");
 	
 	return (cpp_code, num_i_vals, num_f_vals, num_d_vals);
 }

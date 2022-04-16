@@ -1,6 +1,11 @@
 // :/
 #![allow(unused_parens)]
 
+// Opt bait is kinda just commented out for now, but left some dead code in cause lazy
+#![allow(dead_code)]
+
+#![feature(portable_simd)]
+
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc};
@@ -14,7 +19,7 @@ use rand::Rand;
 
 mod compilation_config;
 use compilation_config::{test_generated_code_compilation, test_generated_code_runtime, parse_compiler_config};
-use compilation_config::{TestCompilation, TestRuntime, GenCodeResult, GenCodeFuzzMode};
+use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode, InputValues};
 
 mod parse_spec;
 use parse_spec::parse_intel_intrinsics_xml;
@@ -23,26 +28,32 @@ use parse_spec::parse_intel_intrinsics_xml;
 mod intrinsics;
 use intrinsics::*;
 
+mod parse_exe;
+use parse_exe::{ExecPage, parse_obj_file};
+
 mod codegen_ctx;
 use codegen_ctx::{X86SIMDCodegenCtx, X86SIMDCodegenNode, X86SIMDOptBaitNode};
 use codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
 
-fn check_minimized_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &GenCodeResult, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>) -> bool {
+fn check_minimized_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &GenCodeResult, compilation_tests : &Vec<TestCompilation>) -> bool {
 	let (cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(codegen_ctx);
 
-	let mut input : Option<&str> = None;
+	let mut input : Option<InputValues> = None;
 	match expected_result {
-		GenCodeResult::RuntimeFailure(expected_input, _) => {  input = Some(expected_input); }
-		GenCodeResult::RuntimeDiff(expected_input) => {  input = Some(expected_input); }
+		GenCodeResult::RuntimeFailure(expected_input, _) => {  input = Some(expected_input.clone()); }
+		GenCodeResult::RuntimeDiff(expected_input) => {  input = Some(expected_input.clone()); }
 		_ => { }
 	}
 
 	let res = test_generated_code_compilation(&cpp_code, compilation_tests);
 	
 	if let Some(input) = input {
-		if matches!(res, GenCodeResult::Success(_)) {
-			let res = test_generated_code_runtime(runtime_tests, input);
-			return std::mem::discriminant(&res) == std::mem::discriminant(expected_result);
+		match(res) {
+			GenCodeResult::Success(compiled_outputs) => {
+				let res = test_generated_code_runtime(&compiled_outputs, &input, codegen_ctx.get_return_type());
+				return std::mem::discriminant(&res) == std::mem::discriminant(expected_result);
+			},
+			_ => { }
 		}
 		
 		// If the compile failed, but we were minimizing a runtime issue, then this is introducing a new issue
@@ -56,7 +67,7 @@ fn check_minimized_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : 
 	}
 }
 
-pub fn minimize_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &GenCodeResult, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>) -> X86SIMDCodegenCtx {
+pub fn minimize_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &GenCodeResult, compilation_tests : &Vec<TestCompilation>) -> X86SIMDCodegenCtx {
 	let mut best_ctx = codegen_ctx.clone();
 
 	loop {
@@ -110,7 +121,7 @@ pub fn minimize_gen_code(codegen_ctx : &X86SIMDCodegenCtx, expected_result : &Ge
 				if can_replace_downstream_refs {
 					new_ctx.mark_node_as_noop(ii);
 					print!("Trying to remove node {}, seeing if issue still repros...\n", ii);
-					if check_minimized_gen_code(&new_ctx, expected_result, compilation_tests, runtime_tests) {
+					if check_minimized_gen_code(&new_ctx, expected_result, compilation_tests) {
 						print!("Issue still repros, so we've made progress!\n");
 						made_progress = true;
 						best_ctx = new_ctx;
@@ -168,13 +179,13 @@ fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCo
 			
 			std::fs::write(orig_code_filename, orig_code).expect("couldn't write to file?");
 			std::fs::write(min_code_filename, min_code).expect("couldn't write to file?");
-			std::fs::write(input_filename, input).expect("couldn't write to file?");
+			std::fs::write(input_filename, input.write_to_str()).expect("couldn't write to file?");
 		}
 		_ => panic!("uuhhhh....implement this")
 	}
 }
 
-fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> String {
+fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> InputValues {
 	let mut rng = Rand::default();
 	
 	let mut input_string = String::with_capacity(1024);
@@ -188,11 +199,7 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
 	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
 
-	for i_val in i_vals { write!(&mut input_string, "{}\n", i_val).expect(""); }
-	for f_val in f_vals { write!(&mut input_string, "{}\n", f_val).expect(""); }
-	for d_val in d_vals { write!(&mut input_string, "{}\n", d_val).expect(""); }
-
-	return input_string;
+	return InputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
 
 fn offset_nodes_after_idx_in_ctx(ctx: &mut X86SIMDCodegenCtx, start_idx : usize, amount : isize) {
@@ -342,13 +349,20 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 	return bytes;
 }
 
-fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, runtime_tests : &Vec<TestRuntime>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
+fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
+	
+	//let runtime_tests = Vec::<TestRuntime>::new();
+	
 	//for _ in 0..500 {
 	loop {
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
 		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
 		
 		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
+		//let cpp_code = include_str!("../runtime_crash.cpp");
+		//let num_i_vals = 240;
+		//let num_f_vals = 0;
+		//let num_d_vals = 0;
 
 		// Test compilation
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
@@ -356,7 +370,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 		match res {
 			GenCodeResult::CompilerTimeout => {
 				print!("Got timeout, trying to minimize...\n");
-				let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
+				let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
 				save_out_failure_info(&codegen_ctx, &min_ctx, &res);
 			}
 			GenCodeResult::CompilerFailure(err_code,_,_) => {
@@ -372,7 +386,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 				}
 				
 				if is_actual_error {
-					let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
+					let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
 					save_out_failure_info(&codegen_ctx, &min_ctx, &res);
 				}
 				else {
@@ -381,112 +395,112 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			}
 			GenCodeResult::RuntimeFailure(_,_) => { panic!("??") }
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
-			GenCodeResult::Success(_) => { /*Do nothing*/ }
-		}
-		
-		if matches!(res, GenCodeResult::Success(_)) {
-			if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
-				const NUM_INPUTS_PER_CODEGEN : i32 = 10;
-				for _ in 0..NUM_INPUTS_PER_CODEGEN {
-					let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-					let res = test_generated_code_runtime(&runtime_tests, &input);
-					
-					match res {
-						GenCodeResult::CompilerTimeout => { panic!("??") }
-						GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
-						GenCodeResult::RuntimeFailure(err_code, _) => {
-							print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
-							panic!("Maybe implement this?");
+			GenCodeResult::RuntimeSuccess => { panic!("???") }
+			GenCodeResult::Success(compiled_outputs) => {
+				//println!("Testing\n-----------------\n{}\n---------------", cpp_code);
+				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
+					const NUM_INPUTS_PER_CODEGEN : i32 = 10;
+					for _ in 0..NUM_INPUTS_PER_CODEGEN {
+						let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+						let res = test_generated_code_runtime(&compiled_outputs, &input, codegen_ctx.get_return_type());
+						
+						match res {
+							GenCodeResult::CompilerTimeout => { panic!("??") }
+							GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
+							GenCodeResult::RuntimeFailure(_, err_code) => {
+								print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
+								panic!("Maybe implement this?");
+							}
+							GenCodeResult::RuntimeDiff(_) => {
+								print!("Got runtime difference, trying to minimize....\n");
+								let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
+								save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+							}
+							GenCodeResult::Success(_) => { panic!("wait wrong one, that's compilation") },
+							GenCodeResult::RuntimeSuccess => { /*Do nothing*/ }
 						}
-						GenCodeResult::RuntimeDiff(_) => {
-							print!("Got runtime difference, trying to minimize....\n");
-							let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests, &runtime_tests);
-							save_out_failure_info(&codegen_ctx, &min_ctx, &res);
-						}
-						GenCodeResult::Success(_) => { /*Do nothing*/ }
 					}
+				}
+				else if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
+					todo!();
+					//let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+					//
+					// TODO: For now only doing one test. In theory, we could loop over all and do the same thing for them,
+					// though we don't care about diffs b/w the compiler settings, but with the original
+					//let mut compilation_tests_init = Vec::new();
+					//compilation_tests_init.push(compilation_tests[0].clone());
+					//
+					//let mut runtime_tests_init = Vec::new();
+					//runtime_tests_init.push(runtime_tests[0].clone());
+					//
+					//let init_res = test_generated_code_runtime(&runtime_tests_init, &input);
+					//
+					//let init_output = match init_res {
+					//	GenCodeResult::RuntimeFailure(_err_code, _) => { panic!("runtime failure huh?"); }
+					//	GenCodeResult::Success(output) => { output }
+					//	_ => { panic!("shouldn't happen lol"); }
+					//};
+					//
+					//let (profile_ctx,profiled_var) = add_opt_bait_profiling(&codegen_ctx);
+					//
+					//let (profile_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&profile_ctx);
+					//
+					//let profile_res = test_generated_code_compilation(&profile_cpp_code, &compilation_tests_init);
+					//
+					//if matches!(profile_res, GenCodeResult::Success(_)) {
+					//	let profile_run_res = test_generated_code_runtime(&runtime_tests_init, &input);
+					//	
+					//	if let GenCodeResult::Success(profile_output) = profile_run_res {
+					//		let var_bytes = parse_profile_output(&profile_output);
+					//		
+					//		// Inject "dead" code for that variable
+					//		
+					//		let injected_ctx = add_opt_bait_with_values(&codegen_ctx, profiled_var, &var_bytes);
+					//		let (injected_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&injected_ctx);
+					//		let injected_res = test_generated_code_compilation(&injected_cpp_code, &compilation_tests_init);
+					//		if matches!(injected_res, GenCodeResult::Success(_)) {
+					//			let injected_runtime_res = test_generated_code_runtime(&runtime_tests_init, &input);
+					//			
+					//			if let GenCodeResult::Success(injected_output) = injected_runtime_res {
+					//				if injected_output == init_output {
+					//					//print!("All good, output of injected context matches what's expected\n");
+					//				}
+					//				else {
+					//					print!("Uh oh...difference in injected output. We should save out the code etc.\n");
+					//					let min_hex_hash_full = get_hex_hash_of_bytes(cpp_code.as_bytes());
+					//					let min_hex_hash = &min_hex_hash_full[0..10];
+					//					
+					//					let orig_code_filename = format!("fuzz_issues/opt_bait/{}_orig.cpp", min_hex_hash);
+					//					let bait_code_filename = format!("fuzz_issues/opt_bait/{}_bait.cpp", min_hex_hash);
+					//					let input_filename = format!("fuzz_issues/opt_bait/{}_input.input", min_hex_hash);
+					//					let orig_output_filename = format!("fuzz_issues/opt_bait/{}_orig.output", min_hex_hash);
+					//					let bait_output_filename = format!("fuzz_issues/opt_bait/{}_bait.output", min_hex_hash);
+					//					
+					//					std::fs::write(orig_code_filename, cpp_code).expect("couldn't write to file?");
+					//					std::fs::write(bait_code_filename, injected_cpp_code).expect("couldn't write to file?");
+					//					std::fs::write(input_filename, input).expect("couldn't write to file?");
+					//					std::fs::write(orig_output_filename, init_output).expect("couldn't write to file?");
+					//					std::fs::write(bait_output_filename, injected_output).expect("couldn't write to file?");
+					//				}
+					//			}
+					//			else {
+					//				panic!("Injected context messed up at runtime");
+					//			}
+					//		}
+					//		else {
+					//			panic!("Injected context messed up at compile time");
+					//		}
+					//	}
+					//	else {
+					//		panic!("Profile context messed up at runtime");
+					//	}
+					//}
+					//else {
+					//	panic!("Profile context messed up at compilation");
+					//}
 				}
 			}
-			else if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
-				let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-				
-				// TODO: For now only doing one test. In theory, we could loop over all and do the same thing for them,
-				// though we don't care about diffs b/w the compiler settings, but with the original
-				let mut compilation_tests_init = Vec::new();
-				compilation_tests_init.push(compilation_tests[0].clone());
-				
-				let mut runtime_tests_init = Vec::new();
-				runtime_tests_init.push(runtime_tests[0].clone());
-				
-				let init_res = test_generated_code_runtime(&runtime_tests_init, &input);
-				
-				let init_output = match init_res {
-					GenCodeResult::RuntimeFailure(_err_code, _) => { panic!("runtime failure huh?"); }
-					GenCodeResult::Success(output) => { output }
-					_ => { panic!("shouldn't happen lol"); }
-				};
-
-				let (profile_ctx,profiled_var) = add_opt_bait_profiling(&codegen_ctx);
-				
-				let (profile_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&profile_ctx);
-				
-				let profile_res = test_generated_code_compilation(&profile_cpp_code, &compilation_tests_init);
-				
-				if matches!(profile_res, GenCodeResult::Success(_)) {
-					let profile_run_res = test_generated_code_runtime(&runtime_tests_init, &input);
-					
-					if let GenCodeResult::Success(profile_output) = profile_run_res {
-						let var_bytes = parse_profile_output(&profile_output);
-						
-						// Inject "dead" code for that variable
-						
-						let injected_ctx = add_opt_bait_with_values(&codegen_ctx, profiled_var, &var_bytes);
-						let (injected_cpp_code, _, _, _) = generate_cpp_code_from_codegen_ctx(&injected_ctx);
-						let injected_res = test_generated_code_compilation(&injected_cpp_code, &compilation_tests_init);
-						if matches!(injected_res, GenCodeResult::Success(_)) {
-							let injected_runtime_res = test_generated_code_runtime(&runtime_tests_init, &input);
-							
-							if let GenCodeResult::Success(injected_output) = injected_runtime_res {
-								if injected_output == init_output {
-									//print!("All good, output of injected context matches what's expected\n");
-								}
-								else {
-									print!("Uh oh...difference in injected output. We should save out the code etc.\n");
-									let min_hex_hash_full = get_hex_hash_of_bytes(cpp_code.as_bytes());
-									let min_hex_hash = &min_hex_hash_full[0..10];
-									
-									let orig_code_filename = format!("fuzz_issues/opt_bait/{}_orig.cpp", min_hex_hash);
-									let bait_code_filename = format!("fuzz_issues/opt_bait/{}_bait.cpp", min_hex_hash);
-									let input_filename = format!("fuzz_issues/opt_bait/{}_input.input", min_hex_hash);
-									let orig_output_filename = format!("fuzz_issues/opt_bait/{}_orig.output", min_hex_hash);
-									let bait_output_filename = format!("fuzz_issues/opt_bait/{}_bait.output", min_hex_hash);
-									
-									std::fs::write(orig_code_filename, cpp_code).expect("couldn't write to file?");
-									std::fs::write(bait_code_filename, injected_cpp_code).expect("couldn't write to file?");
-									std::fs::write(input_filename, input).expect("couldn't write to file?");
-									std::fs::write(orig_output_filename, init_output).expect("couldn't write to file?");
-									std::fs::write(bait_output_filename, injected_output).expect("couldn't write to file?");
-								}
-							}
-							else {
-								panic!("Injected context messed up at runtime");
-							}
-						}
-						else {
-							panic!("Injected context messed up at compile time");
-						}
-					}
-					else {
-						panic!("Profile context messed up at runtime");
-					}
-				}
-				else {
-					panic!("Profile context messed up at compilation");
-				}
-			}
 		}
-		
-		
 
 		//print!("Finished one round of fuzzing.\n");
 		total_num_cases_done.fetch_add(1, Ordering::SeqCst);
@@ -534,7 +548,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 10;
+	const NUM_THREADS : u32 = 1;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
@@ -544,32 +558,32 @@ fn fuzz_simd_codegen(config_filename : &str) {
 		let mut compilation_tests = compilation_tests.clone();
 
 		// Replace generic filenames with specific ones in the config
-		for (ii, compilation_test) in compilation_tests.iter_mut().enumerate() {
-			for compiler_arg in compilation_test.compiler_args.iter_mut() {
-				*compiler_arg = compiler_arg.replace("^GENERATED_SOURCE_FILENAME^", &format!("tmp/simd_gen_thr{}_test.cpp", thread_index));
-				*compiler_arg = compiler_arg.replace("^GENERATED_EXE_FILENAME^", &format!("tmp/simd_gen_thr{}_test_{}.exe", thread_index, ii));
-			}
+		//for (ii, compilation_test) in compilation_tests.iter_mut().enumerate() {
+		//	for compiler_arg in compilation_test.compiler_args.iter_mut() {
+		//		*compiler_arg = compiler_arg.replace("^GENERATED_SOURCE_FILENAME^", &format!("tmp/simd_gen_thr{}_test.cpp", thread_index));
+		//		*compiler_arg = compiler_arg.replace("^GENERATED_EXE_FILENAME^", &format!("tmp/simd_gen_thr{}_test_{}.exe", thread_index, ii));
+		//	}
+		//
+		//	// TODO: Blegh, could be better
+		//	compilation_test.code_filename = format!("tmp/simd_gen_thr{}_test.cpp", thread_index);
+		//}
 
-			// TODO: Blegh, could be better
-			compilation_test.code_filename = format!("tmp/simd_gen_thr{}_test.cpp", thread_index);
-		}
-
-		let mut runtime_tests = Vec::<TestRuntime>::with_capacity(compilation_tests.len());
-		if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) || matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
-			// TODO: Less hacky way of doing this...esp. for threading
-			for ii in 0..compilation_tests.len() {
-				runtime_tests.push(TestRuntime {
-					program_exe: format!("tmp/simd_gen_thr{}_test_{}.exe", thread_index, ii)
-				});
-			}
-		}
+		//let mut runtime_tests = Vec::<TestRuntime>::with_capacity(compilation_tests.len());
+		//if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) || matches!(fuzz_mode, GenCodeFuzzMode::CrashAndOptBait) {
+		//	// TODO: Less hacky way of doing this...esp. for threading
+		//	for ii in 0..compilation_tests.len() {
+		//		runtime_tests.push(TestRuntime {
+		//			program_exe: format!("tmp/simd_gen_thr{}_test_{}.exe", thread_index, ii)
+		//		});
+		//	}
+		//}
 
 		let shared_type_to_intrinsics_map = shared_type_to_intrinsics_map.clone();
 		let fuzz_mode = fuzz_mode.clone();
 		let num_cases_state = num_cases_state.clone();
 		
 		let thread_handle = std::thread::spawn(move || {
-			fuzz_simd_codegen_loop(&shared_type_to_intrinsics_map, &compilation_tests, &runtime_tests, fuzz_mode, num_cases_state);
+			fuzz_simd_codegen_loop(&shared_type_to_intrinsics_map, &compilation_tests, fuzz_mode, num_cases_state);
 		});
 		thread_handles.push(thread_handle);
 	}
