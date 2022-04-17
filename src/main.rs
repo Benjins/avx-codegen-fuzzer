@@ -350,7 +350,7 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 }
 
 fn test_thing() {
-	let cpp_code = include_str!("../runtime_diff.cpp");
+	let cpp_code = include_str!("../runtime_crash_02.cpp");
 	let num_i_vals = 240;
 	let num_f_vals = 0;
 	let num_d_vals = 0;
@@ -440,7 +440,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
 			GenCodeResult::RuntimeSuccess => { panic!("???") }
 			GenCodeResult::Success(compiled_outputs) => {
-				//println!("Testing\n-----------------\n{}\n---------------", cpp_code);
+				println!("Testing\n-----------------\n{}\n---------------", cpp_code);
 				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
 					const NUM_INPUTS_PER_CODEGEN : i32 = 10;
 					for _ in 0..NUM_INPUTS_PER_CODEGEN {
@@ -657,7 +657,8 @@ fn print_usage() {
 
 fn main() {
 
-	//test_thing();
+	test_thing();
+	return;
 
 	if std::env::args().count() < 2 {
 		print_usage();
