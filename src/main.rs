@@ -186,7 +186,7 @@ fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCo
 }
 
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> InputValues {
-	let mut rng = Rand::default();
+	let mut rng = Rand::new(0x14141414);
 	
 	let mut input_string = String::with_capacity(1024);
 	
@@ -349,6 +349,49 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 	return bytes;
 }
 
+fn test_thing() {
+	let cpp_code = include_str!("../runtime_diff.cpp");
+	let num_i_vals = 240;
+	let num_f_vals = 0;
+	let num_d_vals = 0;
+	
+	let compilation_tests  = vec![
+	TestCompilation {
+		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
+		compiler_args : vec!["-march=native".to_string(), "-O3".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
+		timeout_seconds : 10
+	},
+	TestCompilation {
+		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
+		compiler_args : vec!["-march=native".to_string(), "-O0".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
+		timeout_seconds : 10
+	}];
+	
+	let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
+	
+	match res {
+		GenCodeResult::Success(compiled_outputs) => {
+			let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+			let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M128i(X86SIMDEType::M128));
+
+			match res {
+				GenCodeResult::CompilerTimeout => { panic!("??") }
+				GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
+				GenCodeResult::RuntimeFailure(_, err_code) => {
+					print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
+					panic!("Maybe implement this?");
+				}
+				GenCodeResult::RuntimeDiff(_) => {
+					println!("Got runtime difference, trying to minimize....");
+				}
+				GenCodeResult::Success(_) => { panic!("wait wrong one, that's compilation") },
+				GenCodeResult::RuntimeSuccess => { println!("success!!") }
+			}
+		}
+		_ => { panic!("sdfgsdf"); }
+	}
+}
+
 fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
 	
 	//let runtime_tests = Vec::<TestRuntime>::new();
@@ -358,11 +401,11 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
 		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
 		
-		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
-		//let cpp_code = include_str!("../runtime_crash.cpp");
-		//let num_i_vals = 240;
-		//let num_f_vals = 0;
-		//let num_d_vals = 0;
+		//let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
+		let cpp_code = include_str!("../runtime_diff.cpp");
+		let num_i_vals = 240;
+		let num_f_vals = 0;
+		let num_d_vals = 0;
 
 		// Test compilation
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
@@ -397,12 +440,12 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
 			GenCodeResult::RuntimeSuccess => { panic!("???") }
 			GenCodeResult::Success(compiled_outputs) => {
-				//println!("Testing\n-----------------\n{}\n---------------", cpp_code);
+				println!("Testing\n-----------------\n{}\n---------------", cpp_code);
 				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
 					const NUM_INPUTS_PER_CODEGEN : i32 = 10;
 					for _ in 0..NUM_INPUTS_PER_CODEGEN {
 						let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-						let res = test_generated_code_runtime(&compiled_outputs, &input, codegen_ctx.get_return_type());
+						let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M128i(X86SIMDEType::M128));//codegen_ctx.get_return_type());
 						
 						match res {
 							GenCodeResult::CompilerTimeout => { panic!("??") }
@@ -614,20 +657,22 @@ fn print_usage() {
 
 fn main() {
 
-	if std::env::args().count() < 2 {
-		print_usage();
-		return;
-	}
+	test_thing();
 
-	let method = std::env::args().nth(1).expect("no args?");
-	if method == "fuzz" {
-		let config_filename = std::env::args().nth(2).expect("missing config?");
-		fuzz_simd_codegen(&config_filename);
-	}
-	else {
-		print_usage();
-		return;
-	}
+	//if std::env::args().count() < 2 {
+	//	print_usage();
+	//	return;
+	//}
+	//
+	//let method = std::env::args().nth(1).expect("no args?");
+	//if method == "fuzz" {
+	//	let config_filename = std::env::args().nth(2).expect("missing config?");
+	//	fuzz_simd_codegen(&config_filename);
+	//}
+	//else {
+	//	print_usage();
+	//	return;
+	//}
 
 	// TODO: How to handle int divide-by-zero, and possibly other traps?
 }

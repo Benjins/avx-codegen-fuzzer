@@ -16,9 +16,9 @@ use crate::intrinsics::X86SIMDType;
 
 #[derive(Default, Debug, Clone)]
 pub struct TestCompilation {
-	compiler_exe : String,
+	pub compiler_exe : String,
 	pub compiler_args : Vec<String>,
-	timeout_seconds : i32
+	pub timeout_seconds : i32
 }
 
 //#[derive(Clone)]

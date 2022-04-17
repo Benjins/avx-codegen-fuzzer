@@ -471,11 +471,6 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	cpp_code.push_str("#define _mm_cvtsd_si64x _mm_cvtsd_si64\n");
 	cpp_code.push_str("#define _mm_cvttsd_si64x _mm_cvttsd_si64\n");
 	cpp_code.push_str("#endif\n");
-
-	cpp_code.push_str("#include <stdio.h>     \n");
-	cpp_code.push_str("#include <stdlib.h>    \n");
-	cpp_code.push_str("#include <string.h>    \n");
-	
 	cpp_code.push_str("\n");
 
 	let mut num_i_vals : usize = 0;
