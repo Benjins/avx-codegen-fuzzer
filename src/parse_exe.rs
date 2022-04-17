@@ -1,6 +1,13 @@
 
 //use goblin::{error, Object};
 use object::{Object, ObjectSection, ObjectSymbol};
+use object::read::SectionIndex;
+
+// I'd prefer the BTreeMap, but we're only hashing SectionIndex's
+// which implement Hash but not Ord. Of course we could just get at the underlying usize field in them,
+// but I've already taken the time the write out this comment explaining my decision so it's now final
+use std::collections::HashMap;
+//use std::collections::BTreeMap;
 
 use executable_memory::ExecutableMemory;
 
@@ -78,12 +85,30 @@ impl ExecPage {
 
 //fn get_symbol_by_inde
 
+// For now just uses zero as a placeholder, idk if anything cares
+fn align_vec(vec : &mut Vec<u8>, alignment : usize) {
+	let byte_offset = vec.len() % alignment;
+	if byte_offset > 0 {
+		for _ in byte_offset..alignment {
+			vec.push(0);
+		}
+	}
+}
+
 pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let obj_file = object::File::parse(bin_data).expect("");
 	
-	//for section in obj_file.sections() {
-	//	println!("section addr {} {:?}", section.address(), section);
-	//}
+	let mut bytes_loaded_into_memory = Vec::<u8>::with_capacity(16*1024);
+	let mut section_to_memory_addr = HashMap::<SectionIndex, usize>::new();
+	
+	for section in obj_file.sections() {
+		if section.size() > 0 {
+			align_vec(&mut bytes_loaded_into_memory, section.align() as usize);
+			section_to_memory_addr.insert(section.index(), bytes_loaded_into_memory.len());
+			bytes_loaded_into_memory.extend_from_slice(section.data().expect("could not get data for section"));
+		}
+		//println!("section addr {} {:?}", section.address(), section);
+	}
 	
 	if let Some(section) = obj_file.section_by_name(".text") {
 		let (text_start_in_file, text_end_in_file) = section.file_range().unwrap();
@@ -104,7 +129,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 				//println!("Lookup in .text of symbol do_stuff_2 ({} bytes): {:#x?}", size, &data[addr..]);
 				
 				let mut exec_page = ExecPage::new(5);
-				exec_page.load_with_code(&bin_data[..], text_start_in_file as usize + addr);
+				// TODO: alignment of sections that need it
+				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
+				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);
 				
 				for (reloc_addr, reloc) in section.relocations() {
 					if reloc.kind() == object::RelocationKind::Relative {
@@ -116,11 +143,12 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 								let encoding = reloc.encoding();
 								let reloc_size = reloc.size() as usize;
 								if encoding == object::RelocationEncoding::Generic {
-									let reloc_offset_in_file = (target_section.file_range().unwrap().0 + target_symbol.address()) as i64;
-									let reloc_insert_offset_in_file = (text_start_in_file + reloc_addr) as i64;
+									let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
+									let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
+									let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
 									let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
-									let reloc_relative_offset = reloc_offset_in_file - reloc_insert_offset_in_file + addend;
-									exec_page.fix_up_redirect(reloc_insert_offset_in_file as usize, reloc_size, reloc_relative_offset);
+									let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+									exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
 								}
 								else {
 									panic!("bad relocation encoding");
