@@ -48,16 +48,30 @@ impl ExecPage {
 	
 	pub fn fix_up_redirect(&mut self, write_offset : usize, write_len_bits : usize, value : i64) {
 		assert!(write_len_bits % 8 == 0);
-		let value_bytes = value.to_le_bytes();
 		let write_len_bytes = write_len_bits / 8;
 		
-		//println!("Fix up redirect at offset {}, {} bytes. Currently {:?}, will be {:?}",
+		let current_value_bytes = &self.page[write_offset..write_offset+write_len_bytes];
+		
+		let current_value_int = {
+			let mut current_value_byte_array = [0u8; 8];
+			for (ii, val) in current_value_bytes.iter().enumerate() {
+				current_value_byte_array[ii] = current_value_bytes[ii];
+			}
+			i64::from_le_bytes(current_value_byte_array)
+		};
+
+		let new_value = value + current_value_int;
+		let new_value_bytes = new_value.to_le_bytes();
+		
+		//println!("Fix up redirect at offset {}, {} bytes. Currently {:?} ({}), will be {:?} ({})",
 		//	write_offset,
 		//	write_len_bytes,
-		//	&self.page[write_offset..write_offset+write_len_bytes],
-		//	&value_bytes[..write_len_bytes]);
+		//	current_value_bytes,
+		//	current_value_int,
+		//	&new_value_bytes[..write_len_bytes],
+		//	new_value);
 
-		self.page[write_offset..write_offset+write_len_bytes].clone_from_slice(&value_bytes[..write_len_bytes]);
+		self.page[write_offset..write_offset+write_len_bytes].clone_from_slice(&new_value_bytes[..write_len_bytes]);
 	}
 	
 	pub fn execute_with_args_256i(&self, i_vals: &[i32], f_vals: &[f32], d_vals: &[f64]) -> __m256i {
@@ -105,7 +119,10 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 		if section.size() > 0 {
 			align_vec(&mut bytes_loaded_into_memory, section.align() as usize);
 			section_to_memory_addr.insert(section.index(), bytes_loaded_into_memory.len());
-			bytes_loaded_into_memory.extend_from_slice(section.data().expect("could not get data for section"));
+			
+			let section_data = section.data().expect("could not get data for section");
+			//println!("Section {:?} data {:?}", section, section_data);
+			bytes_loaded_into_memory.extend_from_slice(section_data);
 		}
 		//println!("section addr {} {:?}", section.address(), section);
 	}

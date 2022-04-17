@@ -350,7 +350,7 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 }
 
 fn test_thing() {
-	let cpp_code = include_str!("../runtime_crash_02.cpp");
+	let cpp_code = include_str!("../runtime_diff_02.cpp");
 	let num_i_vals = 240;
 	let num_f_vals = 0;
 	let num_d_vals = 0;
@@ -369,10 +369,12 @@ fn test_thing() {
 	
 	let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
 	
+	let int_inputs = vec![-859344051, -2086624707, 1561228411, -1476901122, -1030878258, 290233118, -1490476469, -96505071, 618355202, -194714522, -462482109, 205140329, 299520911, 2101000712, -911124485, 912659023, 1319905630, 722935271, -1429987093, -1507550994, 268879675, 1347501955, 917034449, -1812851677, -115940054, -1436984682, -1473975596, -851193256, -993471074, -537685198, -808212574, -747537765, 574482295, -1583216003, 682329506, -1168010880, 382134689, -1452822413, -2137611460, -1675579541, 156635946, 431037423, -1509116773, -24146061, -213710397, 83043079, 1691801001, 1515013122, 1585033333, 1374056715, -1327089249, -837183104, 1614960876, 1442763013, -1321431056, 1066819120, 2097343675, -1912886901, 1796391013, -1040439923, -332508831, -3450306, -1529826070, -304429940, 208215030, 1592083951, -1130246089, 1300262720, 2123525081, 800483682, 1694910014, 1313450989, -1369903944, -1675481900, -1904361350, -545223364, 1780688120, 1316368432, 1337741301, 1550309277, 726280837, -1307641912, 596796286, 492393873, 560921462, 1524275740, 649187956, 2127785177, 921627158, 259474246, 786910547, 796807140, -584099813, 2146799760, 1384449765, -956531676, -1719601050, 1963774478, -878151130, -648013521, 0];
+	
 	match res {
 		GenCodeResult::Success(compiled_outputs) => {
-			let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-			let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M128i(X86SIMDEType::M128));
+			let input = InputValues{ i_vals: int_inputs, f_vals: Vec::new(), d_vals: Vec::new() };//generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+			let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M256i(X86SIMDEType::M256));
 
 			match res {
 				GenCodeResult::CompilerTimeout => { panic!("??") }
@@ -590,7 +592,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 1;
+	const NUM_THREADS : u32 = 20;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	

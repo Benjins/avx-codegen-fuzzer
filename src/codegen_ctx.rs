@@ -307,7 +307,7 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 	//const NUM_NODE_ITERATIONS : usize = 100;
 	const NUM_NODE_ITERATIONS : usize = 30;
 	//let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
-	const CHANCE_FOR_ZERO_NODE : f32 = 0.04;
+	const CHANCE_FOR_ZERO_NODE : f32 = 0.02;
 
 	for ii in 0..NUM_NODE_ITERATIONS {
 	//for ii in 0..num_node_iterations {
