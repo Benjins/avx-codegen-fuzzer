@@ -44,11 +44,12 @@ impl ExecPage {
 		let value_bytes = value.to_le_bytes();
 		let write_len_bytes = write_len_bits / 8;
 		
-		println!("Fix up redirect at offset {}, {} bytes. Currently {:?}, will be {:?}",
-			write_offset,
-			write_len_bytes,
-			&self.page[write_offset..write_offset+write_len_bytes],
-			&value_bytes[..write_len_bytes]);
+		//println!("Fix up redirect at offset {}, {} bytes. Currently {:?}, will be {:?}",
+		//	write_offset,
+		//	write_len_bytes,
+		//	&self.page[write_offset..write_offset+write_len_bytes],
+		//	&value_bytes[..write_len_bytes]);
+
 		self.page[write_offset..write_offset+write_len_bytes].clone_from_slice(&value_bytes[..write_len_bytes]);
 	}
 	
@@ -86,13 +87,13 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	
 	if let Some(section) = obj_file.section_by_name(".text") {
 		let (text_start_in_file, text_end_in_file) = section.file_range().unwrap();
-		println!(".text file range: {}-{}", text_start_in_file, text_end_in_file);
-		for reloc in section.relocations() {
-			println!(".text relocation: {:?}", reloc);
-		}
-		for symbol in obj_file.symbols() {
-			println!(".text symbol {:?} {:?}", symbol, symbol.index());
-		}
+		//println!(".text file range: {}-{}", text_start_in_file, text_end_in_file);
+		//for reloc in section.relocations() {
+		//	println!(".text relocation: {:?}", reloc);
+		//}
+		//for symbol in obj_file.symbols() {
+		//	println!(".text symbol {:?} {:?}", symbol, symbol.index());
+		//}
 		
 		let data = section.data().expect("");
 		for symbol in obj_file.symbols() {

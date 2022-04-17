@@ -186,7 +186,7 @@ fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCo
 }
 
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> InputValues {
-	let mut rng = Rand::new(0x14141414);
+	let mut rng = Rand::default();
 	
 	let mut input_string = String::with_capacity(1024);
 	
@@ -401,11 +401,11 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
 		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
 		
-		//let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
-		let cpp_code = include_str!("../runtime_diff.cpp");
-		let num_i_vals = 240;
-		let num_f_vals = 0;
-		let num_d_vals = 0;
+		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
+		//let cpp_code = include_str!("../runtime_diff.cpp");
+		//let num_i_vals = 240;
+		//let num_f_vals = 0;
+		//let num_d_vals = 0;
 
 		// Test compilation
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
@@ -440,7 +440,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			GenCodeResult::RuntimeDiff(_) => { panic!("??") }
 			GenCodeResult::RuntimeSuccess => { panic!("???") }
 			GenCodeResult::Success(compiled_outputs) => {
-				println!("Testing\n-----------------\n{}\n---------------", cpp_code);
+				//println!("Testing\n-----------------\n{}\n---------------", cpp_code);
 				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
 					const NUM_INPUTS_PER_CODEGEN : i32 = 10;
 					for _ in 0..NUM_INPUTS_PER_CODEGEN {
@@ -657,22 +657,22 @@ fn print_usage() {
 
 fn main() {
 
-	test_thing();
+	//test_thing();
 
-	//if std::env::args().count() < 2 {
-	//	print_usage();
-	//	return;
-	//}
-	//
-	//let method = std::env::args().nth(1).expect("no args?");
-	//if method == "fuzz" {
-	//	let config_filename = std::env::args().nth(2).expect("missing config?");
-	//	fuzz_simd_codegen(&config_filename);
-	//}
-	//else {
-	//	print_usage();
-	//	return;
-	//}
+	if std::env::args().count() < 2 {
+		print_usage();
+		return;
+	}
+	
+	let method = std::env::args().nth(1).expect("no args?");
+	if method == "fuzz" {
+		let config_filename = std::env::args().nth(2).expect("missing config?");
+		fuzz_simd_codegen(&config_filename);
+	}
+	else {
+		print_usage();
+		return;
+	}
 
 	// TODO: How to handle int divide-by-zero, and possibly other traps?
 }
