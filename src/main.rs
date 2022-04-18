@@ -7,7 +7,7 @@
 #![feature(portable_simd)]
 
 use std::collections::HashMap;
-use std::fmt::Write;
+//use std::fmt::Write;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -29,7 +29,7 @@ mod intrinsics;
 use intrinsics::*;
 
 mod parse_exe;
-use parse_exe::{ExecPage, parse_obj_file};
+//use parse_exe::{ExecPage, parse_obj_file};
 
 mod codegen_ctx;
 use codegen_ctx::{X86SIMDCodegenCtx, X86SIMDCodegenNode, X86SIMDOptBaitNode};
@@ -187,9 +187,7 @@ fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCo
 
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> InputValues {
 	let mut rng = Rand::default();
-	
-	let mut input_string = String::with_capacity(1024);
-	
+
 	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
 	for _ in 0..num_i_vals { i_vals.push(rng.rand() as i32); }
 	
@@ -349,50 +347,50 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 	return bytes;
 }
 
-fn test_thing() {
-	let cpp_code = include_str!("../runtime_diff_02.cpp");
-	let num_i_vals = 240;
-	let num_f_vals = 0;
-	let num_d_vals = 0;
-	
-	let compilation_tests  = vec![
-	TestCompilation {
-		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
-		compiler_args : vec!["-march=native".to_string(), "-O3".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
-		timeout_seconds : 10
-	},
-	TestCompilation {
-		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
-		compiler_args : vec!["-march=native".to_string(), "-O0".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
-		timeout_seconds : 10
-	}];
-	
-	let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
-	
-	let int_inputs = vec![-859344051, -2086624707, 1561228411, -1476901122, -1030878258, 290233118, -1490476469, -96505071, 618355202, -194714522, -462482109, 205140329, 299520911, 2101000712, -911124485, 912659023, 1319905630, 722935271, -1429987093, -1507550994, 268879675, 1347501955, 917034449, -1812851677, -115940054, -1436984682, -1473975596, -851193256, -993471074, -537685198, -808212574, -747537765, 574482295, -1583216003, 682329506, -1168010880, 382134689, -1452822413, -2137611460, -1675579541, 156635946, 431037423, -1509116773, -24146061, -213710397, 83043079, 1691801001, 1515013122, 1585033333, 1374056715, -1327089249, -837183104, 1614960876, 1442763013, -1321431056, 1066819120, 2097343675, -1912886901, 1796391013, -1040439923, -332508831, -3450306, -1529826070, -304429940, 208215030, 1592083951, -1130246089, 1300262720, 2123525081, 800483682, 1694910014, 1313450989, -1369903944, -1675481900, -1904361350, -545223364, 1780688120, 1316368432, 1337741301, 1550309277, 726280837, -1307641912, 596796286, 492393873, 560921462, 1524275740, 649187956, 2127785177, 921627158, 259474246, 786910547, 796807140, -584099813, 2146799760, 1384449765, -956531676, -1719601050, 1963774478, -878151130, -648013521, 0];
-	
-	match res {
-		GenCodeResult::Success(compiled_outputs) => {
-			let input = InputValues{ i_vals: int_inputs, f_vals: Vec::new(), d_vals: Vec::new() };//generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
-			let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M256i(X86SIMDEType::M256));
-
-			match res {
-				GenCodeResult::CompilerTimeout => { panic!("??") }
-				GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
-				GenCodeResult::RuntimeFailure(_, err_code) => {
-					print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
-					panic!("Maybe implement this?");
-				}
-				GenCodeResult::RuntimeDiff(_) => {
-					println!("Got runtime difference, trying to minimize....");
-				}
-				GenCodeResult::Success(_) => { panic!("wait wrong one, that's compilation") },
-				GenCodeResult::RuntimeSuccess => { println!("success!!") }
-			}
-		}
-		_ => { panic!("sdfgsdf"); }
-	}
-}
+//fn test_thing() {
+//	let cpp_code = include_str!("../runtime_diff_02.cpp");
+//	let num_i_vals = 240;
+//	let num_f_vals = 0;
+//	let num_d_vals = 0;
+//	
+//	let compilation_tests  = vec![
+//	TestCompilation {
+//		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
+//		compiler_args : vec!["-march=native".to_string(), "-O3".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
+//		timeout_seconds : 10
+//	},
+//	TestCompilation {
+//		compiler_exe : "C:/Dev/LLVM/llvm-project/build/Release/bin/clang++.exe".to_string(),
+//		compiler_args : vec!["-march=native".to_string(), "-O0".to_string(), "-x".to_string(), "c++".to_string(), "-c".to_string(), "-o-".to_string(), "-".to_string()],
+//		timeout_seconds : 10
+//	}];
+//	
+//	let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
+//	
+//	let int_inputs = vec![-859344051, -2086624707, 1561228411, -1476901122, -1030878258, 290233118, -1490476469, -96505071, 618355202, -194714522, -462482109, 205140329, 299520911, 2101000712, -911124485, 912659023, 1319905630, 722935271, -1429987093, -1507550994, 268879675, 1347501955, 917034449, -1812851677, -115940054, -1436984682, -1473975596, -851193256, -993471074, -537685198, -808212574, -747537765, 574482295, -1583216003, 682329506, -1168010880, 382134689, -1452822413, -2137611460, -1675579541, 156635946, 431037423, -1509116773, -24146061, -213710397, 83043079, 1691801001, 1515013122, 1585033333, 1374056715, -1327089249, -837183104, 1614960876, 1442763013, -1321431056, 1066819120, 2097343675, -1912886901, 1796391013, -1040439923, -332508831, -3450306, -1529826070, -304429940, 208215030, 1592083951, -1130246089, 1300262720, 2123525081, 800483682, 1694910014, 1313450989, -1369903944, -1675481900, -1904361350, -545223364, 1780688120, 1316368432, 1337741301, 1550309277, 726280837, -1307641912, 596796286, 492393873, 560921462, 1524275740, 649187956, 2127785177, 921627158, 259474246, 786910547, 796807140, -584099813, 2146799760, 1384449765, -956531676, -1719601050, 1963774478, -878151130, -648013521, 0];
+//	
+//	match res {
+//		GenCodeResult::Success(compiled_outputs) => {
+//			let input = InputValues{ i_vals: int_inputs, f_vals: Vec::new(), d_vals: Vec::new() };//generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
+//			let res = test_generated_code_runtime(&compiled_outputs, &input, X86SIMDType::M256i(X86SIMDEType::M256));
+//
+//			match res {
+//				GenCodeResult::CompilerTimeout => { panic!("??") }
+//				GenCodeResult::CompilerFailure(_,_,_) => { panic!("??") }
+//				GenCodeResult::RuntimeFailure(_, err_code) => {
+//					print!("Got runtime failure error code {}. For now we ignore these\n", err_code);
+//					panic!("Maybe implement this?");
+//				}
+//				GenCodeResult::RuntimeDiff(_) => {
+//					println!("Got runtime difference, trying to minimize....");
+//				}
+//				GenCodeResult::Success(_) => { panic!("wait wrong one, that's compilation") },
+//				GenCodeResult::RuntimeSuccess => { println!("success!!") }
+//			}
+//		}
+//		_ => { panic!("sdfgsdf"); }
+//	}
+//}
 
 fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
 	
@@ -401,7 +399,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 	//for _ in 0..500 {
 	loop {
 		let mut codegen_ctx = X86SIMDCodegenCtx::default();
-		generate_codegen_ctx(&mut codegen_ctx, &type_to_intrinsics_map);
+		generate_codegen_ctx(&mut codegen_ctx, type_to_intrinsics_map);
 		
 		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
 		//let cpp_code = include_str!("../runtime_diff.cpp");
@@ -592,14 +590,14 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 20;
+	const NUM_THREADS : u32 = 10;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
 	
-	for thread_index in 0..NUM_THREADS {
-		let mut compilation_tests = compilation_tests.clone();
+	for __ in 0..NUM_THREADS {
+		let compilation_tests = compilation_tests.clone();
 
 		// Replace generic filenames with specific ones in the config
 		//for (ii, compilation_test) in compilation_tests.iter_mut().enumerate() {

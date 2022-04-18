@@ -2,12 +2,12 @@
 
 use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
-use std::time::{Duration, Instant};
+//use std::time::{Duration, Instant};
 use std::fmt::Write;
 use std::convert::TryInto;
 
-use core::arch::x86_64::__m256i;
-use core::arch::x86_64::__m128i;
+//use core::arch::x86_64::__m256i;
+//use core::arch::x86_64::__m128i;
 
 use crate::parse_exe::{ExecPage, parse_obj_file};
 
@@ -77,7 +77,7 @@ pub enum GenCodeResult {
 }
 
 // Returns the output of the process if successful, or the error code if not, or that it timed out
-fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeout_seconds : Option<i32>) -> ProcessResult {
+fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _timeout_seconds : Option<i32>) -> ProcessResult {
 	//print!("Running process {:?} with args {:?}\n", exe, args);
 	let mut child = Command::new(exe)
 		.args(args)

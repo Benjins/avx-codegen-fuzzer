@@ -55,7 +55,7 @@ impl ExecPage {
 		let current_value_int = {
 			let mut current_value_byte_array = [0u8; 8];
 			for (ii, val) in current_value_bytes.iter().enumerate() {
-				current_value_byte_array[ii] = current_value_bytes[ii];
+				current_value_byte_array[ii] = *val;
 			}
 			i64::from_le_bytes(current_value_byte_array)
 		};
@@ -128,16 +128,6 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	}
 	
 	if let Some(section) = obj_file.section_by_name(".text") {
-		let (text_start_in_file, text_end_in_file) = section.file_range().unwrap();
-		//println!(".text file range: {}-{}", text_start_in_file, text_end_in_file);
-		//for reloc in section.relocations() {
-		//	println!(".text relocation: {:?}", reloc);
-		//}
-		//for symbol in obj_file.symbols() {
-		//	println!(".text symbol {:?} {:?}", symbol, symbol.index());
-		//}
-		
-		let data = section.data().expect("");
 		for symbol in obj_file.symbols() {
 			let symbol_name = symbol.name().expect("");
 			if symbol_name == func_name {
