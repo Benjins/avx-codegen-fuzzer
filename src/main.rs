@@ -5,12 +5,15 @@
 #![allow(dead_code)]
 
 #![feature(portable_simd)]
+#![feature(thread_id_value)]
 
 use std::collections::HashMap;
 //use std::fmt::Write;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+use std::arch::x86_64::{_rdtsc};
 
 use sha2::{Sha256, Digest};
 
@@ -147,7 +150,7 @@ fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	hex::encode(digest)
 }
 
-fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCodegenCtx, result : &GenCodeResult) {
+fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCodegenCtx, result : &GenCodeResult, seed : u64) {
 	let (orig_code,_,_,_) = generate_cpp_code_from_codegen_ctx(original_ctx);
 	let (min_code,_,_,_) = generate_cpp_code_from_codegen_ctx(min_ctx);
 
@@ -176,10 +179,12 @@ fn save_out_failure_info(original_ctx : &X86SIMDCodegenCtx, min_ctx : &X86SIMDCo
 			let orig_code_filename = format!("fuzz_issues/runtime_diffs/{}_orig.cpp", min_hex_hash);
 			let min_code_filename = format!("fuzz_issues/runtime_diffs/{}_min.cpp", min_hex_hash);
 			let input_filename = format!("fuzz_issues/runtime_diffs/{}_input.input", min_hex_hash);
+			let seed_filename = format!("fuzz_issues/runtime_diffs/{}_seed.seed", min_hex_hash);
 			
 			std::fs::write(orig_code_filename, orig_code).expect("couldn't write to file?");
 			std::fs::write(min_code_filename, min_code).expect("couldn't write to file?");
 			std::fs::write(input_filename, input.write_to_str()).expect("couldn't write to file?");
+			std::fs::write(seed_filename, format!("{}", seed)).expect("couldn't write to file?");
 		}
 		_ => panic!("uuhhhh....implement this")
 	}
@@ -189,7 +194,16 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	let mut rng = Rand::default();
 
 	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
-	for _ in 0..num_i_vals { i_vals.push(rng.rand() as i32); }
+	for _ in 0..num_i_vals {
+		let rand_val = match (rng.rand() % 16) {
+			0 =>  0,
+			1 =>  1,
+			2 =>  2,
+			3 => -1,
+			_ => rng.rand() as i32
+		};
+		i_vals.push(rand_val);
+	}
 	
 	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
 	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
@@ -392,13 +406,18 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 //	}
 //}
 
-fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>) {
+fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>) {
 	
 	//let runtime_tests = Vec::<TestRuntime>::new();
 	
+	
+	let mut outer_rng = Rand::new(initial_seed);
+	
 	//for _ in 0..500 {
 	loop {
-		let mut codegen_ctx = X86SIMDCodegenCtx::default();
+		let round_seed = outer_rng.rand_u64();
+		//println!("Round seed {}", round_seed);
+		let mut codegen_ctx = X86SIMDCodegenCtx::new(round_seed);
 		generate_codegen_ctx(&mut codegen_ctx, type_to_intrinsics_map);
 		
 		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&codegen_ctx);
@@ -408,13 +427,14 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 		//let num_d_vals = 0;
 
 		// Test compilation
+		//println!("CPP code----\n{}\n------\n", cpp_code);
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
 
 		match res {
 			GenCodeResult::CompilerTimeout => {
 				print!("Got timeout, trying to minimize...\n");
 				let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
-				save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+				save_out_failure_info(&codegen_ctx, &min_ctx, &res, round_seed);
 			}
 			GenCodeResult::CompilerFailure(err_code,_,_) => {
 				print!("Got compiler failure error code {}, trying to minimize...\n", err_code);
@@ -430,7 +450,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 				
 				if is_actual_error {
 					let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
-					save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+					save_out_failure_info(&codegen_ctx, &min_ctx, &res, round_seed);
 				}
 				else {
 					print!("Actually, the error was just spurious, so let's skip it for now.\n");
@@ -442,7 +462,7 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 			GenCodeResult::Success(compiled_outputs) => {
 				//println!("Testing\n-----------------\n{}\n---------------", cpp_code);
 				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
-					const NUM_INPUTS_PER_CODEGEN : i32 = 10;
+					const NUM_INPUTS_PER_CODEGEN : i32 = 1000;
 					for _ in 0..NUM_INPUTS_PER_CODEGEN {
 						let input = generate_random_input_for_program(num_i_vals, num_f_vals, num_d_vals);
 						let res = test_generated_code_runtime(&compiled_outputs, &input, codegen_ctx.get_return_type());
@@ -456,7 +476,8 @@ fn fuzz_simd_codegen_loop(type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86
 							GenCodeResult::RuntimeDiff(_) => {
 								print!("Got runtime difference, trying to minimize....\n");
 								let min_ctx = minimize_gen_code(&codegen_ctx, &res, compilation_tests);
-								save_out_failure_info(&codegen_ctx, &min_ctx, &res);
+								save_out_failure_info(&codegen_ctx, &min_ctx, &res, round_seed);
+								total_bugs_found.fetch_add(1, Ordering::SeqCst);
 							}
 							GenCodeResult::Success(_) => { panic!("wait wrong one, that's compilation") },
 							GenCodeResult::RuntimeSuccess => { /*Do nothing*/ }
@@ -590,13 +611,17 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 10;
+	const NUM_THREADS : u32 = 20;
 	
 	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
 	
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
+	let num_bugs_found = Arc::new(AtomicUsize::new(0));
 	
-	for __ in 0..NUM_THREADS {
+	// This should ensure subsequent runs don't re-use the same seeds for everything
+	let initial_time = unsafe { _rdtsc() };
+	
+	for thread_id in 0..NUM_THREADS {
 		let compilation_tests = compilation_tests.clone();
 
 		// Replace generic filenames with specific ones in the config
@@ -623,9 +648,13 @@ fn fuzz_simd_codegen(config_filename : &str) {
 		let shared_type_to_intrinsics_map = shared_type_to_intrinsics_map.clone();
 		let fuzz_mode = fuzz_mode.clone();
 		let num_cases_state = num_cases_state.clone();
+		let num_bugs_found = num_bugs_found.clone();
+		
+		// Some prime numbers beause they're better, or so I hear
+		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
 		
 		let thread_handle = std::thread::spawn(move || {
-			fuzz_simd_codegen_loop(&shared_type_to_intrinsics_map, &compilation_tests, fuzz_mode, num_cases_state);
+			fuzz_simd_codegen_loop(initial_seed, &shared_type_to_intrinsics_map, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -639,7 +668,8 @@ fn fuzz_simd_codegen(config_filename : &str) {
 		let seconds_so_far = time_so_far.as_secs_f32();
 		let num_cases_so_far = num_cases_state.load(Ordering::SeqCst);
 		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps\n", seconds_so_far, num_cases_so_far, avg_cases_per_second);
+		let num_bugs_so_far = num_bugs_found.load(Ordering::SeqCst);
+		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs\n", seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far);
 	}
 	
 	// TODO: Uhhhh......yeah have some way of breaking out of the above loop  I guess? Ctrl-C?

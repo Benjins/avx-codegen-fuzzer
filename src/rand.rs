@@ -39,16 +39,21 @@ impl Rand{
 		return i_val as f32 / PRECISION as f32;
 	}
 	
-	pub fn rand_size(&mut self) -> usize {
+	pub fn rand_u64(&mut self) -> u64 {
 		let lo = self.rand() as u64;
 		let hi = (self.rand() as u64) << 32;
-		return (hi | lo) as usize;
+		return hi | lo;
+	}
+	
+	pub fn rand_size(&mut self) -> usize {
+		self.rand_u64() as usize
 	}
 }
 
 impl Default for Rand {
 	fn default() -> Self {
 		let seed64 = unsafe { _rdtsc() };
+		//println!("Thread {} rand seed {}", std::thread::current().id().as_u64(), seed64);
 		Rand::new( seed64 )
 	}
 }

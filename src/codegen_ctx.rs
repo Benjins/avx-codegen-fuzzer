@@ -82,6 +82,14 @@ const REUSE_NODE_IDX_DENOM : u32 = 6;
 const REUSE_NODE_IDX_NUM : u32 = 1;
 
 impl X86SIMDCodegenCtx {
+	pub fn new(seed : u64) -> X86SIMDCodegenCtx {
+		X86SIMDCodegenCtx {
+			intrinsics_sequence: Vec::new(),
+			type_to_ref_idx: HashMap::new(),
+			rng: Rand::new(seed)
+		}
+	}
+	
 	pub fn get_ref_of_type(&mut self, ref_type : X86SIMDType, before_idx : usize) -> usize {
 		if let Some(ref_indices) = self.type_to_ref_idx.get(&ref_type) {
 			for ref_idx in ref_indices {
@@ -288,7 +296,7 @@ impl X86SIMDCodegenCtx {
 			*node_type
 		}
 		else {
-			print!("Return node:\n{:?}\n", &self.intrinsics_sequence[0]);
+			print!("Return node:\n{:?}\n", &self.intrinsics_sequence[return_node_idx]);
 			panic!("bad return node")
 		};
 		
@@ -305,12 +313,13 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
 	//const NUM_NODE_ITERATIONS : usize = 100;
-	const NUM_NODE_ITERATIONS : usize = 35;
-	//let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
-	const CHANCE_FOR_ZERO_NODE : f32 = 0.02;
+	//const NUM_NODE_ITERATIONS : usize = 60;//35;
+	let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
+	//const CHANCE_FOR_ZERO_NODE : f32 = 0.01;
+	let chance_for_zero_node : f32 = match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
 
-	for ii in 0..NUM_NODE_ITERATIONS {
-	//for ii in 0..num_node_iterations {
+	//for ii in 0..NUM_NODE_ITERATIONS {
+	for ii in 0..num_node_iterations {
 		if ii >= ctx.get_num_nodes() {
 			let _ = ctx.get_ref_of_type(ending_type, ii);
 		}
@@ -319,7 +328,8 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 			// Convert MASK to uint32 because...idk gotta handle it better
 			let node_type = get_underlying_simd_type(node_type);
 
-			if ii > 0 && ctx.rng.randf() < CHANCE_FOR_ZERO_NODE {
+			//if ii > 0 && ctx.rng.randf() < CHANCE_FOR_ZERO_NODE {
+			if ii > 0 && ctx.rng.randf() < chance_for_zero_node {
 				ctx.mark_node_as_zero(ii);
 			}
 			else {
@@ -350,8 +360,8 @@ pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &
 		}
 	}
 	
-	for ii in NUM_NODE_ITERATIONS..ctx.get_num_nodes() {
-	//for ii in num_node_iterations..ctx.get_num_nodes() {
+	//for ii in NUM_NODE_ITERATIONS..ctx.get_num_nodes() {
+	for ii in num_node_iterations..ctx.get_num_nodes() {
 		if ctx.get_type_of_pending_node(ii).is_some() {
 			ctx.mark_node_as_entry(ii);
 		}

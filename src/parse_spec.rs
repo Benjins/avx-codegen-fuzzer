@@ -33,6 +33,10 @@ const MITIGATION_AVOID_FLOATING_POINT_INTRINSICS : bool = true;
 // For now, we don't properly implement the _MM_FROUND args, so skip these
 const MITIGATION_AVOID_ROUNDING_INTRINSICS : bool = true;
 
+// This is just permuting 32-bit elements, but it's listed as having floating point semantics but uses __m256i types,
+// so overall kinda weird. Causes issues, unclear if bug
+const MITIGATION_AVOID_PERMUTR2F : bool = true;
+
 // _mm256_alignr_epi8 according to the spec can take [0, 32) as its third arg, which defines a shift
 // However, it's not clear if having it >16 will lead to 0's or UB. For now, we can disable it just in case
 // pending an investigation (even if it is 0's it's a weird thing to do).
@@ -69,6 +73,10 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 
 	if MITIGATION_AVOID_VPBROADCAST {
 		disallowed_intrinsics.insert("_mm_broadcastsi128_si256");
+	}
+
+	if MITIGATION_AVOID_PERMUTR2F {
+		disallowed_intrinsics.insert("_mm256_permute2f128_si256");
 	}
 
 	// These all seem to leave some of the destination register undefined

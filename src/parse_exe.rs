@@ -126,6 +126,18 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 		}
 		//println!("section addr {} {:?}", section.address(), section);
 	}
+
+	let mut chk_stk_file_offset = None;
+
+	for symbol in obj_file.symbols() {
+		if symbol.name().expect("") == "__chkstk" {
+			// We have a stack-check, so we want to insert an empty function body, and have all calls link to that instead
+			// This isn't ideal, since in theory the compiler could mis-optimize a stack memory access, and we wouldn't catch it
+			// However given that we're running this in our own process anyway, we kinda just assume that that doesn't happen
+			chk_stk_file_offset = Some(bytes_loaded_into_memory.len());
+			bytes_loaded_into_memory.push(0xc3);
+		}
+	}
 	
 	if let Some(section) = obj_file.section_by_name(".text") {
 		for symbol in obj_file.symbols() {
@@ -146,19 +158,40 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 						match reloc_target {
 							object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
 								let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
-								let target_section = obj_file.section_by_index(target_symbol.section_index().unwrap()).unwrap();
-								let encoding = reloc.encoding();
-								let reloc_size = reloc.size() as usize;
-								if encoding == object::RelocationEncoding::Generic {
-									let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
-									let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
-									let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
-									let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
-									let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
-									exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+								if let Some(target_symbol_section_index) = target_symbol.section_index() {
+									let target_section = obj_file.section_by_index(target_symbol_section_index).unwrap();
+									let encoding = reloc.encoding();
+									let reloc_size = reloc.size() as usize;
+									if encoding == object::RelocationEncoding::Generic {
+										let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
+										let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
+										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
+										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+									}
+									else {
+										panic!("bad relocation encoding");
+									}
+								}
+								else if target_symbol.name().expect("") == "__chkstk" {
+									// TODO: Some code dup with above
+									let encoding = reloc.encoding();
+									let reloc_size = reloc.size() as usize;
+									if encoding == object::RelocationEncoding::Generic {
+										let reloc_offset_in_memory = (chk_stk_file_offset.unwrap()) as i64;
+										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
+										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+									}
+									else {
+										panic!("bad relocation encoding");
+									}
 								}
 								else {
-									panic!("bad relocation encoding");
+									println!("symbol had no section index, and is not __chkstk {:?}", target_symbol);
+									panic!("cannot relocate symbol");
 								}
 							}
 							_ => { panic!("Bad reloc target type"); }

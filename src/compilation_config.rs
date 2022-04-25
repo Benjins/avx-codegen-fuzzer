@@ -37,7 +37,7 @@ enum ProcessResult {
 	Timeout
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InputValues {
 	pub i_vals : Vec<i32>,
 	pub f_vals : Vec<f32>,
