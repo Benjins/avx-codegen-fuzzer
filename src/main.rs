@@ -570,7 +570,7 @@ fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<
 	}
 }
 
-fn fuzz_simd_codegen(config_filename : &str) {
+fn fuzz_simd_codegen(config_filename : &str, num_threads : u32) {
 	// Open the data xml file for the intrinsics
 	let intrinsics_docs_filename = "data-3.6.0.xml";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
@@ -611,9 +611,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 
-	const NUM_THREADS : u32 = 20;
-	
-	print!("Launching fuzzer with {} threads\n", NUM_THREADS);
+	print!("Launching fuzzer with {} threads\n", num_threads);
 	
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
 	let num_bugs_found = Arc::new(AtomicUsize::new(0));
@@ -621,7 +619,7 @@ fn fuzz_simd_codegen(config_filename : &str) {
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = unsafe { _rdtsc() };
 	
-	for thread_id in 0..NUM_THREADS {
+	for thread_id in 0..num_threads {
 		let compilation_tests = compilation_tests.clone();
 
 		// Replace generic filenames with specific ones in the config
@@ -684,6 +682,30 @@ fn print_usage() {
 	print!("usage: [exe] fuzz [config_filename]\n");
 }
 
+fn get_num_threads() -> u32 {
+	for (ii,arg) in std::env::args().enumerate() {
+		if arg == "--threads" {
+			if ii == std::env::args().len() - 1 {
+				panic!("--threads was the last argument");
+			}
+			else {
+				let thread_count_arg = std::env::args().nth(ii + 1).expect("");
+				let maybe_thread_count = thread_count_arg.parse::<u32>();
+				if let Ok(thread_count) = maybe_thread_count {
+					return thread_count;
+				}
+				else {
+					panic!("--threads was not followed by a number");
+				}
+			}
+		}
+	}
+
+	// Yeah, a good default. It's definitely not me being too lazy to add 'num_cpus = "1.13.1"' to my Cargo.toml file,
+	// I'd much rather write out this comment explaining my poor decisions ha ha ha
+	return 4;
+}
+
 fn main() {
 
 	//test_thing();
@@ -697,7 +719,8 @@ fn main() {
 	let method = std::env::args().nth(1).expect("no args?");
 	if method == "fuzz" {
 		let config_filename = std::env::args().nth(2).expect("missing config?");
-		fuzz_simd_codegen(&config_filename);
+		let num_threads = get_num_threads();
+		fuzz_simd_codegen(&config_filename, num_threads);
 	}
 	else {
 		print_usage();
