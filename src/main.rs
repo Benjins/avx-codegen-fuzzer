@@ -9,9 +9,10 @@
 
 use std::collections::HashMap;
 //use std::fmt::Write;
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+use std::collections::BTreeSet;
 
 use std::arch::x86_64::{_rdtsc};
 
@@ -406,7 +407,7 @@ fn parse_profile_output(profile_output : &str) -> Vec<u8> {
 //	}
 //}
 
-fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>) {
+fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>, unique_seeds : Arc<Mutex<BTreeSet<u64>>>) {
 	
 	//let runtime_tests = Vec::<TestRuntime>::new();
 	
@@ -416,6 +417,9 @@ fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<
 	//for _ in 0..500 {
 	loop {
 		let round_seed = outer_rng.rand_u64();
+		
+		
+		
 		//println!("Round seed {}", round_seed);
 		let mut codegen_ctx = X86SIMDCodegenCtx::new(round_seed);
 		generate_codegen_ctx(&mut codegen_ctx, type_to_intrinsics_map);
@@ -567,6 +571,7 @@ fn fuzz_simd_codegen_loop(initial_seed : u64, type_to_intrinsics_map : &HashMap<
 
 		//print!("Finished one round of fuzzing.\n");
 		total_num_cases_done.fetch_add(1, Ordering::SeqCst);
+		unique_seeds.lock().unwrap().insert(round_seed);
 	}
 }
 
@@ -615,6 +620,7 @@ fn fuzz_simd_codegen(config_filename : &str, num_threads : u32) {
 	
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
 	let num_bugs_found = Arc::new(AtomicUsize::new(0));
+	let unique_seeds = Arc::new(Mutex::new(BTreeSet::<u64>::new()));
 	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = unsafe { _rdtsc() };
@@ -647,12 +653,13 @@ fn fuzz_simd_codegen(config_filename : &str, num_threads : u32) {
 		let fuzz_mode = fuzz_mode.clone();
 		let num_cases_state = num_cases_state.clone();
 		let num_bugs_found = num_bugs_found.clone();
+		let unique_seeds = unique_seeds.clone();
 		
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
 		
 		let thread_handle = std::thread::spawn(move || {
-			fuzz_simd_codegen_loop(initial_seed, &shared_type_to_intrinsics_map, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found);
+			fuzz_simd_codegen_loop(initial_seed, &shared_type_to_intrinsics_map, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, unique_seeds);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -667,7 +674,10 @@ fn fuzz_simd_codegen(config_filename : &str, num_threads : u32) {
 		let num_cases_so_far = num_cases_state.load(Ordering::SeqCst);
 		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
 		let num_bugs_so_far = num_bugs_found.load(Ordering::SeqCst);
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs\n", seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far);
+		
+		let num_unique_seeds = unique_seeds.lock().unwrap().len();
+		let unique_seed_ratio = (num_unique_seeds as f32) / (num_cases_so_far as f32);
+		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:10} unique seeds | {:5.4} seed uniqueness \n", seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, num_unique_seeds, unique_seed_ratio);
 	}
 	
 	// TODO: Uhhhh......yeah have some way of breaking out of the above loop  I guess? Ctrl-C?
