@@ -35,7 +35,8 @@ const MITIGATION_AVOID_ROUNDING_INTRINSICS : bool = true;
 
 // This is just permuting 32-bit elements, but it's listed as having floating point semantics but uses __m256i types,
 // so overall kinda weird. Causes issues, unclear if bug
-const MITIGATION_AVOID_PERMUTR2F : bool = true;
+// UPDATE: Nope, not related to Permute, was instead an issue resolved in ed8dffef4c37d831a0bcc713ab56f38d8d9612df
+const MITIGATION_AVOID_PERMUTR2F : bool = false;
 
 // _mm256_alignr_epi8 according to the spec can take [0, 32) as its third arg, which defines a shift
 // However, it's not clear if having it >16 will lead to 0's or UB. For now, we can disable it just in case
