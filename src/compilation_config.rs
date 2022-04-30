@@ -4,15 +4,9 @@ use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
 //use std::time::{Duration, Instant};
 use std::fmt::Write;
-use std::convert::TryInto;
 
-//use core::arch::x86_64::__m256i;
-//use core::arch::x86_64::__m128i;
-
-use crate::parse_exe::{ExecPage, parse_obj_file};
-
-// blergh
-use crate::intrinsics::X86SIMDType;
+use crate::parse_exe::parse_obj_file;
+use crate::exec_mem::ExecPage;
 
 #[derive(Default, Debug, Clone)]
 pub struct TestCompilation {
@@ -175,7 +169,7 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 
 	return GenCodeResult::Success(generated_codes);
 }
-
+/*
 pub fn test_generated_code_runtime(runtimes : &Vec<CompiledCodeOutput>, input : &InputValues, return_type : X86SIMDType) -> GenCodeResult {
 	//todo!("");
 	
@@ -252,6 +246,7 @@ pub fn test_generated_code_runtime(runtimes : &Vec<CompiledCodeOutput>, input : 
 	////print!("\n-------------\n{}\n------------\n", &first_output);
 	//return GenCodeResult::Success(first_output);
 }
+*/
 
 #[derive(Debug, Clone)]
 pub enum GenCodeFuzzMode {
