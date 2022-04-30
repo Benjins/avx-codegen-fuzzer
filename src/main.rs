@@ -28,12 +28,10 @@ use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode};
 mod x86_parse_spec;
 use x86_parse_spec::parse_intel_intrinsics_xml;
 
-// Kinda just need everything here
 mod x86_intrinsics;
-use x86_intrinsics::*;
+use x86_intrinsics::{X86SIMDIntrinsic, X86SIMDType};
 
 mod parse_exe;
-//use parse_exe::{ExecPage, parse_obj_file};
 
 mod x86_codegen_ctx;
 use x86_codegen_ctx::{X86SIMDCodegenCtx};
