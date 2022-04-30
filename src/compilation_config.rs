@@ -3,7 +3,6 @@
 use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
 //use std::time::{Duration, Instant};
-use std::fmt::Write;
 
 use crate::parse_exe::parse_obj_file;
 use crate::exec_mem::ExecPage;
@@ -20,54 +19,17 @@ pub struct CompiledCodeOutput {
 	pub code_page : ExecPage
 }
 
-//#[derive(Default, Debug, Clone)]
-//pub struct TestRuntime {
-//	pub program_code : CompiledCodeOutput
-//}
-
 enum ProcessResult {
 	Success(Vec<u8>),
 	Error(i32, String, String),
 	Timeout
 }
 
-#[derive(Clone, Debug)]
-pub struct InputValues {
-	pub i_vals : Vec<i32>,
-	pub f_vals : Vec<f32>,
-	pub d_vals : Vec<f64>
-}
-
-impl InputValues {
-	pub fn write_to_str(&self) -> String {
-		let mut out_str = String::with_capacity(4096);
-
-		write!(out_str, "{}\n", self.i_vals.len()).expect("");
-		for i_val in self.i_vals.iter() {
-			write!(out_str, "{} ", i_val).expect("");
-		}
-		
-		write!(out_str, "{}\n", self.f_vals.len()).expect("");
-		for f_val in self.f_vals.iter() {
-			write!(out_str, "{} ", f_val).expect("");
-		}
-		
-		write!(out_str, "{}\n", self.d_vals.len()).expect("");
-		for d_val in self.d_vals.iter() {
-			write!(out_str, "{} ", d_val).expect("");
-		}
-		
-		return out_str;
-	}
-}
-
 pub enum GenCodeResult {
 	Success(Vec<CompiledCodeOutput>), // stdout of program
 	CompilerTimeout,
 	CompilerFailure(i32, String, String),
-	RuntimeSuccess,
-	RuntimeFailure(InputValues, i32),
-	RuntimeDiff(InputValues) // input that triggered the diff
+	RuntimeDiff(String)
 }
 
 // Returns the output of the process if successful, or the error code if not, or that it timed out
@@ -169,84 +131,6 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 
 	return GenCodeResult::Success(generated_codes);
 }
-/*
-pub fn test_generated_code_runtime(runtimes : &Vec<CompiledCodeOutput>, input : &InputValues, return_type : X86SIMDType) -> GenCodeResult {
-	//todo!("");
-	
-	match return_type {
-		X86SIMDType::M256i(_) => {
-			let mut first_output : Option<std::simd::u8x32> = None;
-			for compiled_output in runtimes {
-				let ret = compiled_output.code_page.execute_with_args_256i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
-				let bytes_256 : std::simd::u8x32 = ret.try_into().unwrap();
-				if let Some(first_output) = first_output {
-					if bytes_256 != first_output {
-						println!("DIFF {:?} {:?}", bytes_256, first_output);
-						return GenCodeResult::RuntimeDiff(input.clone());
-					}
-				}
-				else {
-					first_output = Some(bytes_256);
-				}
-			}
-
-			return GenCodeResult::RuntimeSuccess;
-		},
-		X86SIMDType::M128i(_) => {
-			let mut first_output : Option<std::simd::u8x16> = None;
-			for compiled_output in runtimes {
-				let ret = compiled_output.code_page.execute_with_args_128i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
-				let bytes_128 : std::simd::u8x16 = ret.try_into().unwrap();
-				if let Some(first_output) = first_output {
-					if bytes_128 != first_output {
-						println!("DIFF {:?} {:?}", bytes_128, first_output);
-						return GenCodeResult::RuntimeDiff(input.clone());
-					}
-				}
-				else {
-					first_output = Some(bytes_128);
-				}
-			}
-
-			return GenCodeResult::RuntimeSuccess;
-		},
-		_ => { panic!("bad return type"); }
-	}
-	
-	
-	// Seems reasonable I guess
-	//const RUNTIME_TIMEOUT : i32 = 5;
-	//let mut first_output = None;
-	//for runtime in runtimes {
-	//	let runtime_result = run_process_with_timeout(&runtime.program_exe, &Vec::<String>::new(), input, Some(RUNTIME_TIMEOUT));
-	//	
-	//	match runtime_result {
-	//		ProcessResult::Error(err_code, _stdout, _stderr) => {
-	//			return GenCodeResult::RuntimeFailure(input.to_string(), err_code);
-	//		}
-	//		ProcessResult::Timeout => {
-	//			panic!("Why did this time out??\n");
-	//		}
-	//		ProcessResult::Success(program_output) => {
-	//			// If any outputs are different from the first,
-	//			// we've failed (one of the compilers has generated bad code...or we messed up)
-	//			if let Some(ref first_output) = first_output {
-	//				if program_output != *first_output {
-	//					return GenCodeResult::RuntimeDiff(input.to_string());
-	//				}
-	//			}
-	//			else {
-	//				first_output = Some(program_output);
-	//			}
-	//		}
-	//	}
-	//}
-	//
-	//let first_output = first_output.unwrap();
-	////print!("\n-------------\n{}\n------------\n", &first_output);
-	//return GenCodeResult::Success(first_output);
-}
-*/
 
 #[derive(Debug, Clone)]
 pub enum GenCodeFuzzMode {

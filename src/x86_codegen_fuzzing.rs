@@ -2,10 +2,12 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
+use std::fmt::Write;
+
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
-use crate::codegen_ctx::{X86SIMDCodegenCtx, X86SIMDCodegenNode, X86SIMDOptBaitNode};
+use crate::codegen_ctx::X86SIMDCodegenCtx;
 use crate::codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
 
 // kinda just need all of this lol
@@ -37,6 +39,29 @@ pub struct X86CodeFuzzerInputValues {
 	pub d_vals : Vec<f64>
 }
 
+impl X86CodeFuzzerInputValues {
+	pub fn write_to_str(&self) -> String {
+		let mut out_str = String::with_capacity(4096);
+
+		write!(out_str, "{}\n", self.i_vals.len()).expect("");
+		for i_val in self.i_vals.iter() {
+			write!(out_str, "{} ", i_val).expect("");
+		}
+		
+		write!(out_str, "{}\n", self.f_vals.len()).expect("");
+		for f_val in self.f_vals.iter() {
+			write!(out_str, "{} ", f_val).expect("");
+		}
+		
+		write!(out_str, "{}\n", self.d_vals.len()).expect("");
+		for d_val in self.d_vals.iter() {
+			write!(out_str, "{} ", d_val).expect("");
+		}
+		
+		return out_str;
+	}
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum X86SIMDOutputValues {
 	SIMD128Bit(std::simd::u8x16),
@@ -65,6 +90,79 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
 
 	return X86CodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
+}
+
+fn minimize_gen_code<F: Fn(&X86CodegenFuzzer, &X86SIMDCodegenCtx) -> bool>(fuzzer: &X86CodegenFuzzer, codegen_ctx : &X86SIMDCodegenCtx, minim_check: F) -> X86SIMDCodegenCtx {
+	let mut best_ctx = codegen_ctx.clone();
+
+	loop {
+		let mut made_progress = false;
+
+		// For each node, try to replace it with a no-op,
+		// and change all downstream references to something else
+		for ii in 1..best_ctx.get_num_nodes() {
+			if let Some(intrinsic_node) = best_ctx.maybe_get_produced_node(ii) {
+				print!("Trying to remove node {} {:?}\n", ii, intrinsic_node);
+				let mut new_ctx = best_ctx.clone();
+				let return_type = intrinsic_node.intrinsic.return_type;
+				let mut can_replace_downstream_refs = true;
+				
+				//print!("Current type_to_ref_idx is {:?}\n", new_ctx.type_to_ref_idx);
+				
+				// For each node before the one we're trying to remove
+				for jj in 0..ii {
+					//print!("Checking downstream node {}\n", jj);
+					if let Some(ref mut downstream_node) = new_ctx.maybe_get_produced_node_mut(jj) {
+						//print!("Downstream node {} is produced ({:?} refs)\n", jj, downstream_node.references);
+						// If it references the node we're trying to remove
+						for ref_idx in downstream_node.references.iter_mut() {
+							if *ref_idx == ii {
+								// Check if we can replace that reference with something else
+								if let Some(new_idx) = best_ctx.maybe_get_node_of_type(return_type, jj, ii) {
+									//print!("Swap node {} for {}\n", *ref_idx, new_idx);
+									*ref_idx = new_idx;
+								}
+								else {
+									// If not, bail
+									can_replace_downstream_refs = false;
+									break;
+								}
+							}
+						}
+						
+						if can_replace_downstream_refs {
+							for ref_idx in downstream_node.references.iter_mut() {
+								assert!(*ref_idx != ii);
+							}
+						}
+						
+						if !can_replace_downstream_refs{
+							break;
+						}
+					}
+				}
+				
+				// If we successfully replaced all downstream refs
+				if can_replace_downstream_refs {
+					new_ctx.mark_node_as_noop(ii);
+					print!("Trying to remove node {}, seeing if issue still repros...\n", ii);
+					if minim_check(fuzzer, &new_ctx) {
+						print!("Issue still repros, so we've made progress!\n");
+						made_progress = true;
+						best_ctx = new_ctx;
+						break;
+					}
+				}
+			}
+		}
+		
+		if !made_progress {
+			print!("Could no longer make progress on any current nodes\n");
+			break;
+		}
+	}
+
+	return best_ctx.clone();
 }
 
 impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues> for X86CodegenFuzzer {
@@ -100,19 +198,9 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 		return generate_random_input_for_program(code_meta.num_i_vals, code_meta.num_f_vals, code_meta.num_d_vals);
 	}
 
-	// If we can even bother minimizing the context
-	fn can_minimize(&self) -> bool {
-		// For now
-		return false;
-	}
-
 	// uhh.....idk
-	fn start_minimizing(&mut self) {
-		todo!();
-	}
-
-	fn try_minimize(&mut self, ctx: &Self::CodegenCtx) -> Option<Self::CodegenCtx> {
-		todo!();
+	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
+		Some(minimize_gen_code(self, &ctx, func))
 	}
 
 	// Actually execute it: this is probably like local, but 
@@ -142,6 +230,10 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 			},
 			_ => { return false; }
 		}
+	}
+	
+	fn save_input_to_string(&self, input : &Self::FuzzerInput) -> String {
+		input.write_to_str()
 	}
 }
 
