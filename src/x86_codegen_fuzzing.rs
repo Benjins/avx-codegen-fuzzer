@@ -7,11 +7,11 @@ use std::fmt::Write;
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
-use crate::codegen_ctx::X86SIMDCodegenCtx;
-use crate::codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
+use crate::x86_codegen_ctx::X86SIMDCodegenCtx;
+use crate::x86_codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
 
 // kinda just need all of this lol
-use crate::intrinsics::*;
+use crate::x86_intrinsics::*;
 
 use crate::exec_mem::ExecPage;
 

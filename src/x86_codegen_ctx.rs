@@ -2,7 +2,7 @@
 use std::fmt::Write;
 use std::collections::{HashMap};
 
-use crate::intrinsics::*;
+use crate::x86_intrinsics::*;
 use crate::rand::Rand;
 
 fn get_random_simd_etype(rng : &mut Rand, num_bits : u32) -> X86SIMDEType {

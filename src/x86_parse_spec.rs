@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeSet};
 
-use crate::intrinsics::*;
+use crate::x86_intrinsics::*;
 
 // You could previously download the XML-formatted spec here:
 // https://software.intel.com/sites/landingpage/IntrinsicsGuide/files/data-3.6.0.xml

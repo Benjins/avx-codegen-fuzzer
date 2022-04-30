@@ -25,18 +25,18 @@ mod compilation_config;
 use compilation_config::{test_generated_code_compilation, parse_compiler_config};
 use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode};
 
-mod parse_spec;
-use parse_spec::parse_intel_intrinsics_xml;
+mod x86_parse_spec;
+use x86_parse_spec::parse_intel_intrinsics_xml;
 
 // Kinda just need everything here
-mod intrinsics;
-use intrinsics::*;
+mod x86_intrinsics;
+use x86_intrinsics::*;
 
 mod parse_exe;
 //use parse_exe::{ExecPage, parse_obj_file};
 
-mod codegen_ctx;
-use codegen_ctx::{X86SIMDCodegenCtx};
+mod x86_codegen_ctx;
+use x86_codegen_ctx::{X86SIMDCodegenCtx};
 
 mod exec_mem;
 
