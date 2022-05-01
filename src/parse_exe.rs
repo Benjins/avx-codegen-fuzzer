@@ -67,59 +67,70 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);
 				
 				for (reloc_addr, reloc) in section.relocations() {
-					if reloc.kind() == object::RelocationKind::Relative {
-						let reloc_target = reloc.target();
-						match reloc_target {
-							object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
-								let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
-								if let Some(target_symbol_section_index) = target_symbol.section_index() {
-									let target_section = obj_file.section_by_index(target_symbol_section_index).unwrap();
-									let encoding = reloc.encoding();
-									let reloc_size = reloc.size() as usize;
-									if encoding == object::RelocationEncoding::Generic {
-										let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
-										let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
-										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
-										
-										// TODO: oh, is the implicit addend the "add with what's already there"? and the addend is added either way?
-										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
-										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
-										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+					match reloc.kind() {
+						object::RelocationKind::Relative => {
+							let reloc_target = reloc.target();
+							match reloc_target {
+								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
+									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
+									if let Some(target_symbol_section_index) = target_symbol.section_index() {
+										let target_section = obj_file.section_by_index(target_symbol_section_index).unwrap();
+										let encoding = reloc.encoding();
+										let reloc_size = reloc.size() as usize;
+										if encoding == object::RelocationEncoding::Generic {
+											let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
+											let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
+											let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+											
+											// TODO: oh, is the implicit addend the "add with what's already there"? and the addend is added either way?
+											let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
+											let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+											exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+										}
+										else {
+											panic!("bad relocation encoding");
+										}
+									}
+									else if target_symbol.name().expect("") == "__chkstk" {
+										// TODO: Some code dup with above
+										let encoding = reloc.encoding();
+										let reloc_size = reloc.size() as usize;
+										if encoding == object::RelocationEncoding::Generic {
+											let reloc_offset_in_memory = (chk_stk_file_offset.unwrap()) as i64;
+											let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+											// TODO: wait do we need the addend?
+											let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
+											let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+											exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
+										}
+										else {
+											panic!("bad relocation encoding");
+										}
 									}
 									else {
-										panic!("bad relocation encoding");
+										println!("symbol had no section index, and is not __chkstk {:?}", target_symbol);
+										panic!("cannot relocate symbol");
 									}
 								}
-								else if target_symbol.name().expect("") == "__chkstk" {
-									// TODO: Some code dup with above
-									let encoding = reloc.encoding();
-									let reloc_size = reloc.size() as usize;
-									if encoding == object::RelocationEncoding::Generic {
-										let reloc_offset_in_memory = (chk_stk_file_offset.unwrap()) as i64;
-										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
-										// TODO: wait do we need the addend?
-										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
-										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
-										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
-									}
-									else {
-										panic!("bad relocation encoding");
-									}
-								}
-								else {
-									println!("symbol had no section index, and is not __chkstk {:?}", target_symbol);
-									panic!("cannot relocate symbol");
-								}
+								_ => { panic!("Bad reloc target type"); }
 							}
-							_ => { panic!("Bad reloc target type"); }
 						}
+						object::RelocationKind::Elf(extra_data) => {
+							let reloc_target = reloc.target();
+							match reloc_target {
+								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
+									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
+									println!("TODO: ELF with elf-specific relocations? reloc = {:?} symbol = {:?} reloc_addr = {}", reloc, target_symbol, reloc_addr);
+								}
+								_ => { panic!("Elf reloc with other target: {:?}", reloc_target); }
+							}
+						}
+						_ => { panic!("Bad relocation kind {:?}", reloc); }
 					}
 					// TODO:
 					// thread 'main' panicked at
 					// 'Bad relocation kind Relocation { kind: Elf(275), encoding: Generic, size: 0, target: Symbol(SymbolIndex(3)), addend: 0, implicit_addend: false }', src\parse_exe.rs:115:25
-					else {
-						panic!("Bad relocation kind {:?}", reloc);
-					}
+					
 				}
 				
 				return Some(exec_page);

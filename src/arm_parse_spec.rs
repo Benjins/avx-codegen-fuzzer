@@ -49,6 +49,7 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vaesdq_u8");
 	disallowed_intrinsics.insert("vaesmcq_u8");
 	disallowed_intrinsics.insert("vaeseq_u8");
+	disallowed_intrinsics.insert("vaesimcq_u8");
 
 	// Nor dot products?
 	disallowed_intrinsics.insert("vdot_s32");
@@ -63,8 +64,12 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vusdot_u32");
 	disallowed_intrinsics.insert("vusdot_lane_s32");
 	disallowed_intrinsics.insert("vusdot_lane_u32");
-	disallowed_intrinsics.insert("vdotq_lane_32");
+	disallowed_intrinsics.insert("vdotq_lane_s32");
 	disallowed_intrinsics.insert("vdotq_lane_u32");
+	disallowed_intrinsics.insert("vsudotq_lane_s32");
+	disallowed_intrinsics.insert("vsudotq_lane_u32");
+	disallowed_intrinsics.insert("vusdotq_lane_s32");
+	disallowed_intrinsics.insert("vusdotq_lane_u32");
 
 	// SHA-1 stuff...seriously of all the SHA's they chose SHA-1 to accelerate?
 	disallowed_intrinsics.insert("vsha1cq_u32");
@@ -81,7 +86,10 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vsha256su1q_u32");
 
 	// Matrix stuff?
+	disallowed_intrinsics.insert("vmmlaq_s32");
 	disallowed_intrinsics.insert("vmmlaq_u32");
+	disallowed_intrinsics.insert("vusmmlaq_s32");
+	disallowed_intrinsics.insert("vusmmlaq_u32");
 
 	return disallowed_intrinsics;
 }

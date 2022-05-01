@@ -361,9 +361,9 @@ fn test_thing() {
 		let ctx = fuzzer.generate_ctx();
 		let (cpp_code, code_meta) = fuzzer.generate_cpp_code(&ctx);
 		
-				println!("-----------------------------");
-				print!("{}", cpp_code);
-				println!("-----------------------------");
+		//println!("-----------------------------");
+		//print!("{}", cpp_code);
+		//println!("-----------------------------");
 		
 		let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
 
@@ -373,9 +373,9 @@ fn test_thing() {
 			}
 			_ => {
 				println!("Compilation failed!!");
-				//println!("-----------------------------");
-				//print!("{}", cpp_code);
-				//println!("-----------------------------");
+				println!("-----------------------------");
+				print!("{}", cpp_code);
+				println!("-----------------------------");
 			}
 		}
 	}
