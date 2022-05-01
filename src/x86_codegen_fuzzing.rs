@@ -8,7 +8,7 @@ use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
 use crate::x86_codegen_ctx::X86SIMDCodegenCtx;
-use crate::x86_codegen_ctx::{generate_cpp_code_from_codegen_ctx, generate_codegen_ctx};
+use crate::x86_codegen_ctx::{generate_cpp_code_from_x86_codegen_ctx, generate_x86_codegen_ctx};
 
 // kinda just need all of this lol
 use crate::x86_intrinsics::*;
@@ -178,13 +178,13 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 	// This generates some context struct that's basically analagous to the AST
 	fn generate_ctx(&mut self) -> Self::CodegenCtx {
 		let mut codegen_ctx = Self::CodegenCtx::new(self.outer_rng.rand_u64());
-		generate_codegen_ctx(&mut codegen_ctx, &self.type_to_intrinsics_map);
+		generate_x86_codegen_ctx(&mut codegen_ctx, &self.type_to_intrinsics_map);
 		return codegen_ctx;
 	}
 
 	// Turn the AST/context into actual CPP code, along with any metadata (i.e. number of values to pass for SIMD's iVals pointer, return value, etc.)
 	fn generate_cpp_code(&self, ctx : &Self::CodegenCtx) -> (String, Self::CodeMeta) {
-		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_codegen_ctx(&ctx);
+		let (cpp_code, num_i_vals, num_f_vals, num_d_vals) = generate_cpp_code_from_x86_codegen_ctx(&ctx);
 		let meta_data = Self::CodeMeta {
 			num_i_vals: num_i_vals,
 			num_f_vals: num_f_vals,

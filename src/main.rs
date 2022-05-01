@@ -44,6 +44,18 @@ use codegen_fuzzing::CodegenFuzzer;
 mod x86_codegen_fuzzing;
 use x86_codegen_fuzzing::{X86CodegenFuzzer, X86CodegenFuzzerThreadInput, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues };
 
+mod arm_intrinsics;
+use arm_intrinsics::{ARMSIMDType, ARMSIMDIntrinsic};
+
+mod arm_parse_spec;
+use arm_parse_spec::parse_arm_intrinsics_json;
+
+mod arm_codegen_ctx;
+use arm_codegen_ctx::ARMSIMDCodegenCtx;
+
+mod arm_codegen_fuzzing;
+use arm_codegen_fuzzing::{ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues};
+
 fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	let mut hasher = Sha256::new();
 	hasher.update(input);
@@ -86,7 +98,7 @@ fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeRes
 	}
 }
 
-fn fuzz_gen_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>(
+fn fuzz_x86_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>(
 		input : ThreadInput, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>
 	)
 	where FuzzType : CodegenFuzzer<ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>, FuzzerOutput: Copy, CodegenCtx: Clone {
@@ -198,7 +210,7 @@ fn fuzz_gen_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInp
 	}
 }
 
-fn fuzz_gen_x86_simd_codegen(config_filename : &str, num_threads : u32) {
+fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		// Open the data xml file for the intrinsics
 	let intrinsics_docs_filename = "data-3.6.0.xml";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
@@ -259,7 +271,7 @@ fn fuzz_gen_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		};
 		
 		let thread_handle = std::thread::spawn(move || {
-			fuzz_gen_simd_codegen_loop::<X86CodegenFuzzer, X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues>(
+			fuzz_x86_simd_codegen_loop::<X86CodegenFuzzer, X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues>(
 				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found);
 		});
 		thread_handles.push(thread_handle);
@@ -309,10 +321,70 @@ fn get_num_threads() -> u32 {
 	return 4;
 }
 
+fn test_thing() {
+	let intrinsics_docs_filename = "arm_intrinsics.json";
+	let contents = std::fs::read_to_string(intrinsics_docs_filename);
+	let contents = contents.unwrap();
+	
+	let intrinsics_list = parse_arm_intrinsics_json(&contents);
+
+	let config_filename = "test_arm_local_clang.json";
+
+	let config_contents = std::fs::read_to_string(config_filename);
+	if config_contents.is_err() {
+		print!("Could not open config file '{}'\n", config_filename);
+		return;
+	}
+	let config_contents = config_contents.unwrap();
+
+	let type_to_intrinsics_map = {
+		let mut type_to_intrinsics_map = HashMap::<ARMSIMDType, Vec<ARMSIMDIntrinsic>>::new();
+		
+		for intrinsic in intrinsics_list {
+			let intrinsics_for_type = type_to_intrinsics_map.entry(intrinsic.return_type)
+				.or_insert_with(|| Vec::<ARMSIMDIntrinsic>::with_capacity(4));
+				
+			intrinsics_for_type.push(intrinsic);
+		}
+
+		type_to_intrinsics_map
+	};
+	
+	let (compilation_tests, fuzz_mode) = parse_compiler_config(&config_contents);
+	
+	
+	let fuzzer_input = ARMCodegenFuzzerThreadInput { type_to_intrinsics_map: type_to_intrinsics_map, thread_seed: 0x1414141 };
+	
+	let mut fuzzer = ARMCodegenFuzzer::new_fuzzer_state(fuzzer_input);
+
+	loop {
+		let ctx = fuzzer.generate_ctx();
+		let (cpp_code, code_meta) = fuzzer.generate_cpp_code(&ctx);
+		
+				println!("-----------------------------");
+				print!("{}", cpp_code);
+				println!("-----------------------------");
+		
+		let res = test_generated_code_compilation(&cpp_code, &compilation_tests);
+
+		match res {
+			GenCodeResult::Success(_) => {
+				println!("the compilation was a success!");
+			}
+			_ => {
+				println!("Compilation failed!!");
+				//println!("-----------------------------");
+				//print!("{}", cpp_code);
+				//println!("-----------------------------");
+			}
+		}
+	}
+}
+
 fn main() {
 
-	//test_thing();
-	//return;
+	test_thing();
+	return;
 
 	if std::env::args().count() < 2 {
 		print_usage();
@@ -323,8 +395,7 @@ fn main() {
 	if method == "fuzz" {
 		let config_filename = std::env::args().nth(2).expect("missing config?");
 		let num_threads = get_num_threads();
-		//fuzz_simd_codegen(&config_filename, num_threads);
-		fuzz_gen_x86_simd_codegen(&config_filename, num_threads);
+		fuzz_x86_simd_codegen(&config_filename, num_threads);
 	}
 	else {
 		print_usage();

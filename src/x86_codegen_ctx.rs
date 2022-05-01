@@ -304,7 +304,7 @@ impl X86SIMDCodegenCtx {
 	}
 }
 
-pub fn generate_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>) {
+pub fn generate_x86_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type : &HashMap<X86SIMDType, Vec<X86SIMDIntrinsic>>) {
 	let mut ending_type = get_random_simd_type(&mut ctx.rng);
 	while !intrinsics_by_type.contains_key(&ending_type) {
 		ending_type = get_random_simd_type(&mut ctx.rng);
@@ -373,7 +373,7 @@ fn align_usize(val : usize, alignment : usize) -> usize {
 }
 
 fn generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, entry_type : X86SIMDType, num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> (usize, usize, usize) {
-	write!(cpp_code, "\t{} var_{} = ", simd_type_to_cpp_type_name(entry_type), var_idx).expect("");
+	write!(cpp_code, "\t{} var_{} = ", x86_simd_type_to_cpp_type_name(entry_type), var_idx).expect("");
 
 	// It's possible that M64/M128 have less strict alignment needs, but let's just do this
 	const SIMD_ALIGNMENT_BYTES : usize = 32;
@@ -464,7 +464,7 @@ fn generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, entr
 	}
 }
 
-pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, usize, usize, usize) {
+pub fn generate_cpp_code_from_x86_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, usize, usize, usize) {
 	let mut cpp_code = String::with_capacity(32*1024);
 
 	cpp_code.push_str("#define _CRT_SECURE_NO_WARNINGS\n\n");
@@ -488,7 +488,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 	let mut num_d_vals : usize = 0;
 
 	let return_type = ctx.get_return_type();
-	let return_type_name = simd_type_to_cpp_type_name(return_type);
+	let return_type_name = x86_simd_type_to_cpp_type_name(return_type);
 
 	cpp_code.push_str("#if defined(_MSC_VER)\n");
 	cpp_code.push_str("__declspec(noinline)\n");
@@ -505,14 +505,14 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 		match node {
 			X86SIMDCodegenNode::Immediate(base_type, i_val, _f_val) => {
 				// TODO: Pick i_val or f_val or d_val as needed like in entry
-				write!(&mut cpp_code, "\t{} var_{} = {};\n", base_type_to_cpp_type_name(*base_type), ii, i_val).expect("");
+				write!(&mut cpp_code, "\t{} var_{} = {};\n", x86_base_type_to_cpp_type_name(*base_type), ii, i_val).expect("");
 			}
 			X86SIMDCodegenNode::ConstantImmediate(_,_) => {
 				// Do nothing, this isn't a runtime value
 			}
 			X86SIMDCodegenNode::Zero(node_type) => {
 				// TODO: Should we do something other than "x = {}" ?
-				write!(&mut cpp_code, "\t{} var_{} = {{}};\n", simd_type_to_cpp_type_name(*node_type), ii).expect("");
+				write!(&mut cpp_code, "\t{} var_{} = {{}};\n", x86_simd_type_to_cpp_type_name(*node_type), ii).expect("");
 			}
 			X86SIMDCodegenNode::Entry(entry_type) => {
 				let (new_num_i_vals, new_num_f_vals, new_num_d_vals) =
@@ -530,7 +530,7 @@ pub fn generate_cpp_code_from_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (String, u
 					write!(&mut cpp_code, "\t{}(", intrinsic_node.intrinsic.intrinsic_name).expect("");
 				}
 				else {
-					write!(&mut cpp_code, "\t{} var_{} = {}(", simd_type_to_cpp_type_name(intrinsic_node.intrinsic.return_type),
+					write!(&mut cpp_code, "\t{} var_{} = {}(", x86_simd_type_to_cpp_type_name(intrinsic_node.intrinsic.return_type),
 						ii, intrinsic_node.intrinsic.intrinsic_name).expect("");
 				}
 				for (ref_ii, ref_idx) in intrinsic_node.references.iter().enumerate() {

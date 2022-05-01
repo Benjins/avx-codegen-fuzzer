@@ -80,6 +80,8 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_section.index()).unwrap();
 										let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64;
 										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+										
+										// TODO: oh, is the implicit addend the "add with what's already there"? and the addend is added either way?
 										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
 										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
 										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
@@ -95,6 +97,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 									if encoding == object::RelocationEncoding::Generic {
 										let reloc_offset_in_memory = (chk_stk_file_offset.unwrap()) as i64;
 										let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+										// TODO: wait do we need the addend?
 										let addend = if reloc.has_implicit_addend() { reloc.addend() } else { 0 };
 										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
 										exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset);
@@ -111,8 +114,11 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 							_ => { panic!("Bad reloc target type"); }
 						}
 					}
+					// TODO:
+					// thread 'main' panicked at
+					// 'Bad relocation kind Relocation { kind: Elf(275), encoding: Generic, size: 0, target: Symbol(SymbolIndex(3)), addend: 0, implicit_addend: false }', src\parse_exe.rs:115:25
 					else {
-						panic!("Bad relocation kind");
+						panic!("Bad relocation kind {:?}", reloc);
 					}
 				}
 				

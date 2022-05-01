@@ -73,7 +73,7 @@ pub fn is_simd_type_floating_point(simd_type : X86SIMDType) -> bool {
 	}
 }
 
-pub fn base_type_to_cpp_type_name(base_type : X86BaseType) -> &'static str {
+pub fn x86_base_type_to_cpp_type_name(base_type : X86BaseType) -> &'static str {
 	match base_type {
 		X86BaseType::Void => "void",
 		X86BaseType::Int8 => "char",
@@ -89,10 +89,10 @@ pub fn base_type_to_cpp_type_name(base_type : X86BaseType) -> &'static str {
 	}
 }
 
-pub fn simd_type_to_cpp_type_name(simd_type : X86SIMDType) -> &'static str {
+pub fn x86_simd_type_to_cpp_type_name(simd_type : X86SIMDType) -> &'static str {
 	match simd_type {
-		X86SIMDType::Primitive(base_type) => base_type_to_cpp_type_name(base_type),
-		X86SIMDType::ConstantImmediate(base_type, _) => base_type_to_cpp_type_name(base_type),
+		X86SIMDType::Primitive(base_type) => x86_base_type_to_cpp_type_name(base_type),
+		X86SIMDType::ConstantImmediate(base_type, _) => x86_base_type_to_cpp_type_name(base_type),
 		X86SIMDType::M64(_) => "__m64",
 		X86SIMDType::M128(_) => "__m128",
 		X86SIMDType::M128d(_) => "__m128d",
