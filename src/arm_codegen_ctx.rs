@@ -109,7 +109,25 @@ impl ARMSIMDCodegenCtx {
 			print!("ARM Node {:3} {:?}\n", idx, node);
 		}
 	}
+
+	pub fn maybe_get_produced_node(&self, idx : usize) -> Option<&ARMSIMDCodegenIntrinsic> {
+		if let ARMSIMDCodegenNode::Produced(ref intrinsic_node) = &self.intrinsics_sequence[idx] {
+			Some(intrinsic_node)
+		}
+		else {
+			None
+		}
+	}
 	
+	pub fn maybe_get_produced_node_mut(&mut self, idx : usize) -> Option<&mut ARMSIMDCodegenIntrinsic> {
+		if let ARMSIMDCodegenNode::Produced(ref mut intrinsic_node) = &mut self.intrinsics_sequence[idx] {
+			Some(intrinsic_node)
+		}
+		else {
+			None
+		}
+	}
+
 	pub fn produce_for_idx(&mut self, idx : usize, node_intrinsic : ARMSIMDCodegenIntrinsic) {
 		if let ARMSIMDCodegenNode::Pending(node_type) = self.intrinsics_sequence[idx] {
 			assert!(node_type == node_intrinsic.intrinsic.return_type);
@@ -143,6 +161,35 @@ impl ARMSIMDCodegenCtx {
 		}
 	}
 	
+	pub fn mark_node_as_noop(&mut self, node_idx : usize) {
+		match &self.intrinsics_sequence[node_idx] {
+			ARMSIMDCodegenNode::Produced(intrinsic_node) => {
+				let ret_type = intrinsic_node.intrinsic.return_type;
+				
+				// Remove from type_to_ref_idx as well
+				let ref_indices = self.type_to_ref_idx.get(&ret_type).unwrap();
+				print!("Remove ref index {} for type {:?}\n", node_idx, ret_type);
+				let index = ref_indices.iter().position(|x| *x == node_idx).unwrap();
+				self.type_to_ref_idx.get_mut(&ret_type).unwrap().remove(index);
+				
+				self.intrinsics_sequence[node_idx] = ARMSIMDCodegenNode::NoOp;
+			}
+			// TODO: We can't yet do this because it would potentially screw up input
+			// We can do it for crash bugs, but...yeah
+			ARMSIMDCodegenNode::Entry(_) => { /*self.intrinsics_sequence[node_idx] = X86SIMDCodegenNode::NoOp;*/ }
+			ARMSIMDCodegenNode::Zero(node_type) => {
+				let node_type = *node_type;
+				
+				// Remove from type_to_ref_idx as well
+				let index = self.type_to_ref_idx.get(&node_type).unwrap().iter().position(|x| *x == node_idx).unwrap();
+				self.type_to_ref_idx.get_mut(&node_type).unwrap().remove(index);
+				
+				self.intrinsics_sequence[node_idx] = ARMSIMDCodegenNode::NoOp;
+			}
+			_ => panic!("this shouldn't happen")
+		}
+	}
+	
 	pub fn mark_node_as_zero(&mut self, node_idx : usize) {
 		if let ARMSIMDCodegenNode::Pending(node_type) = self.intrinsics_sequence[node_idx] {
 			self.intrinsics_sequence[node_idx] = ARMSIMDCodegenNode::Zero(node_type);
@@ -153,18 +200,8 @@ impl ARMSIMDCodegenCtx {
 	}
 	
 	pub fn get_return_node_idx(&self) -> usize {
+		// Ignoring OptBait since we don't do that anymore
 		return 0;
-		//let mut return_node_idx = 0;
-		//while return_node_idx < self.intrinsics_sequence.len() && matches!(self.intrinsics_sequence[return_node_idx], X86SIMDCodegenNode::OptBait(_)) {
-		//	return_node_idx += 1;
-		//}
-		//
-		//if return_node_idx >= self.intrinsics_sequence.len() {
-		//	print!("Intrinsics sequence:\n{:?}\n", &self.intrinsics_sequence);
-		//	panic!("bad codegen ctx: could not find return node");
-		//}
-		//
-		//return return_node_idx;
 	}
 	
 	pub fn get_return_type(&self) -> ARMSIMDType {
@@ -245,93 +282,9 @@ fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, 
 	write!(cpp_code, "\t{} var_{} = {{}};", arm_simd_type_to_cpp_type_name(entry_type), var_idx).expect("");
 
 	const SIMD_ALIGNMENT_BYTES : usize = 16;
-	
-	return (num_i_vals, num_f_vals, num_d_vals);
 
-	//match entry_type {
-	//	X86SIMDType::Primitive(base_type) => {
-	//		match base_type {
-	//			X86BaseType::Int8 => {
-	//				write!(cpp_code, "(char)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::UInt8 => {
-	//				write!(cpp_code, "(unsigned char)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::Int16 => {
-	//				write!(cpp_code, "(short)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::UInt16 => {
-	//				write!(cpp_code, "(unsigned short)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::Int32 => {
-	//				write!(cpp_code, "(int)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::UInt32 => {
-	//				write!(cpp_code, "(unsigned int)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::Int64 => {
-	//				write!(cpp_code, "(long long)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::UInt64 => {
-	//				write!(cpp_code, "(unsigned long long)(iVals[{}])", num_i_vals).expect("");
-	//				return (num_i_vals + 1, num_f_vals, num_d_vals);
-	//			}
-	//			X86BaseType::Float32 => {
-	//				write!(cpp_code, "fVals[{}]", num_f_vals).expect("");
-	//				return (num_i_vals, num_f_vals + 1, num_d_vals);
-	//			}
-	//			X86BaseType::Float64 => {
-	//				write!(cpp_code, "dVals[{}]", num_d_vals).expect("");
-	//				return (num_i_vals, num_f_vals, num_d_vals + 1);
-	//			}
-	//			_ => panic!("void or bad base type")
-	//		}
-	//	}
-	//	X86SIMDType::ConstantImmediate(_, _) => { panic!("Immediate") }
-	//	X86SIMDType::M64(_) => {
-	//		// TODO: Don't broadcast?
-	//		let start_idx = align_usize(num_i_vals, SIMD_ALIGNMENT_BYTES / 4);
-	//		write!(cpp_code, "_mm_set1_pi32(iVals[{}])", start_idx).expect("");
-	//		return (start_idx + 2, num_f_vals, num_d_vals);
-	//	}
-	//	X86SIMDType::M128(_) => {
-	//		let start_idx = align_usize(num_f_vals, SIMD_ALIGNMENT_BYTES / 4);
-	//		write!(cpp_code, "_mm_load_ps(&fVals[{}])", start_idx).expect("");
-	//		return (num_i_vals, start_idx + 4, num_d_vals);
-	//	}
-	//	X86SIMDType::M128d(_) => {
-	//		let start_idx = align_usize(num_d_vals, SIMD_ALIGNMENT_BYTES / 8);
-	//		write!(cpp_code, "_mm_load_pd(&dVals[{}])", start_idx).expect("");
-	//		return (num_i_vals, num_f_vals, start_idx + 2);
-	//	}
-	//	X86SIMDType::M128i(_) => {
-	//		let start_idx = align_usize(num_i_vals, SIMD_ALIGNMENT_BYTES / 4);
-	//		write!(cpp_code, "_mm_load_si128((const __m128i*)&iVals[{}])", start_idx).expect("");
-	//		return (start_idx + 4, num_f_vals, num_d_vals);
-	//	}
-	//	X86SIMDType::M256(_) => {
-	//		let start_idx = align_usize(num_f_vals, SIMD_ALIGNMENT_BYTES / 4);
-	//		write!(cpp_code, "_mm256_load_ps(&fVals[{}])", start_idx).expect("");
-	//		return (num_i_vals, start_idx + 8, num_d_vals);
-	//	}
-	//	X86SIMDType::M256d(_) => {
-	//		let start_idx = align_usize(num_d_vals, SIMD_ALIGNMENT_BYTES / 8);
-	//		write!(cpp_code, "_mm256_loadu_pd(&dVals[{}])", start_idx).expect("");
-	//		return (num_i_vals, num_f_vals, start_idx + 4);
-	//	}
-	//	X86SIMDType::M256i(_) => {
-	//		let start_idx = align_usize(num_i_vals, SIMD_ALIGNMENT_BYTES / 4);
-	//		write!(cpp_code, "_mm256_loadu_si256((const __m256i*)&iVals[{}])", start_idx).expect("");
-	//		return (start_idx + 8, num_f_vals, num_d_vals);
-	//	}
-	//}
+	// TODO: actually increase these for input sizing on metadata
+	return (num_i_vals, num_f_vals, num_d_vals);
 }
 
 pub fn generate_cpp_code_from_arm_codegen_ctx(ctx: &ARMSIMDCodegenCtx) -> (String, usize, usize, usize) {

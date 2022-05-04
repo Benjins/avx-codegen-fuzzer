@@ -8,8 +8,11 @@ use crate::arm_intrinsics::*;
 use std::collections::BTreeSet;
 
 
-// Floating point is for now too much of a headache to fuzz the way we do
-const MITIGATION_AVOID_FLOATING_POINT : bool = true;
+// Floating point is for now too much of a headache to fuzz the way we do, unless we're doing crash-only
+const MITIGATION_AVOID_FLOATING_POINT : bool = false;
+
+// Even if we allow floating point, float16 may not be supported
+const MITIGATION_AVOID_FP16 : bool = true;
 
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
 const MITIGATION_AVOID_A64_ONLY : bool = true;
@@ -162,6 +165,12 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 
 			if MITIGATION_AVOID_FLOATING_POINT {
 				if is_arm_simd_type_floating_point(ret_type) || intrinsic_args.iter().any(|&arg| is_arm_simd_type_floating_point(arg)) {
+					continue;
+				}
+			}
+			
+			if MITIGATION_AVOID_FP16 {
+				if is_arm_simd_type_fp16(ret_type) || intrinsic_args.iter().any(|&arg| is_arm_simd_type_fp16(arg)) {
 					continue;
 				}
 			}

@@ -48,6 +48,75 @@ pub struct ARMSIMDOutputValues {
 }
 
 
+fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(fuzzer: &ARMCodegenFuzzer, codegen_ctx : &ARMSIMDCodegenCtx, minim_check: F) -> ARMSIMDCodegenCtx {
+	let mut best_ctx = codegen_ctx.clone();
+
+	loop {
+		let mut made_progress = false;
+
+		// For each node, try to replace it with a no-op,
+		// and change all downstream references to something else
+		for ii in 1..best_ctx.get_num_nodes() {
+			if let Some(intrinsic_node) = best_ctx.maybe_get_produced_node(ii) {
+				print!("Trying to remove node {} {:?}\n", ii, intrinsic_node);
+				let mut new_ctx = best_ctx.clone();
+				let return_type = intrinsic_node.intrinsic.return_type;
+				let mut can_replace_downstream_refs = true;
+				
+				//print!("Current type_to_ref_idx is {:?}\n", new_ctx.type_to_ref_idx);
+				
+				// For each node before the one we're trying to remove
+				for jj in 0..ii {
+					if let Some(ref mut downstream_node) = new_ctx.maybe_get_produced_node_mut(jj) {
+						// If it references the node we're trying to remove
+						for ref_idx in downstream_node.references.iter_mut() {
+							if *ref_idx == ii {
+								// Check if we can replace that reference with something else
+								if let Some(new_idx) = best_ctx.maybe_get_node_of_type(return_type, jj, ii) {
+									*ref_idx = new_idx;
+								}
+								else {
+									// If not, bail
+									can_replace_downstream_refs = false;
+									break;
+								}
+							}
+						}
+						
+						if can_replace_downstream_refs {
+							for ref_idx in downstream_node.references.iter_mut() {
+								assert!(*ref_idx != ii);
+							}
+						}
+						
+						if !can_replace_downstream_refs{
+							break;
+						}
+					}
+				}
+				
+				// If we successfully replaced all downstream refs
+				if can_replace_downstream_refs {
+					new_ctx.mark_node_as_noop(ii);
+					print!("Trying to remove node {}, seeing if issue still repros...\n", ii);
+					if minim_check(fuzzer, &new_ctx) {
+						print!("Issue still repros, so we've made progress!\n");
+						made_progress = true;
+						best_ctx = new_ctx;
+						break;
+					}
+				}
+			}
+		}
+		
+		if !made_progress {
+			print!("Could no longer make progress on any current nodes\n");
+			break;
+		}
+	}
+
+	return best_ctx.clone();
+}
 
 impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues> for ARMCodegenFuzzer {
 	// Each of these will go on a thread, can contain inputs like
@@ -90,7 +159,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 
 	// uhh.....idk
 	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
-		todo!();
+		Some(minimize_gen_arm_code(self, &ctx, func))
 	}
 
 	// Actually execute it: this is probably like local, but 

@@ -225,6 +225,15 @@ pub fn is_arm_simd_type_floating_point(simd_type : ARMSIMDType) -> bool {
 	}
 }
 
+pub fn is_arm_simd_type_fp16(simd_type : ARMSIMDType) -> bool {
+	match simd_type {
+		ARMSIMDType::Primitive(base_type) => base_type == ARMBaseType::Float16,
+		ARMSIMDType::ConstantIntImmediate(_, _) => false,
+		ARMSIMDType::SIMD(base_type, _) => base_type == ARMBaseType::Float16,
+		ARMSIMDType::SIMDArr(base_type, _, _) => base_type == ARMBaseType::Float16
+	}
+}
+
 
 pub fn arm_base_type_to_cpp_type_name(base_type : ARMBaseType) -> &'static str {
 	match base_type {

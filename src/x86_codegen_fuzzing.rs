@@ -92,7 +92,7 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	return X86CodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
 
-fn minimize_gen_code<F: Fn(&X86CodegenFuzzer, &X86SIMDCodegenCtx) -> bool>(fuzzer: &X86CodegenFuzzer, codegen_ctx : &X86SIMDCodegenCtx, minim_check: F) -> X86SIMDCodegenCtx {
+fn minimize_gen_x86_code<F: Fn(&X86CodegenFuzzer, &X86SIMDCodegenCtx) -> bool>(fuzzer: &X86CodegenFuzzer, codegen_ctx : &X86SIMDCodegenCtx, minim_check: F) -> X86SIMDCodegenCtx {
 	let mut best_ctx = codegen_ctx.clone();
 
 	loop {
@@ -200,7 +200,7 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 
 	// uhh.....idk
 	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
-		Some(minimize_gen_code(self, &ctx, func))
+		Some(minimize_gen_x86_code(self, &ctx, func))
 	}
 
 	// Actually execute it: this is probably like local, but 
