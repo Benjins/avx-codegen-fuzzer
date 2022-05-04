@@ -119,8 +119,8 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 							let reloc_target = reloc.target();
 							match reloc_target {
 								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
-									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
-									println!("TODO: ELF with elf-specific relocations? reloc = {:?} symbol = {:?} reloc_addr = {}", reloc, target_symbol, reloc_addr);
+									let _target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
+									//println!("TODO: ELF with elf-specific relocations? reloc = {:?} symbol = {:?} reloc_addr = {}", reloc, target_symbol, reloc_addr);
 								}
 								_ => { panic!("Elf reloc with other target: {:?}", reloc_target); }
 							}
