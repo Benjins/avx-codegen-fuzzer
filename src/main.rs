@@ -99,7 +99,8 @@ fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeRes
 }
 
 fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>(
-		input : ThreadInput, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode, total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>
+		input : ThreadInput, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode,
+		total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>, num_bytes_fuzzed : Arc<AtomicUsize>
 	)
 	where FuzzType : CodegenFuzzer<ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>, FuzzerOutput: Copy, CodegenCtx: Clone {
 	
@@ -110,6 +111,9 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 		
 		let (cpp_code, code_meta) = fuzzer.generate_cpp_code(&codegen_ctx);
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
+		
+		// TODO: UTF-8, bytes not necessarily same as chars, idk what rust gives but we only do ascii in this house so w/e
+		let num_cpp_bytes = cpp_code.len();
 
 		match res {
 			GenCodeResult::CompilerTimeout => {
@@ -207,6 +211,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 		};
 
 		total_num_cases_done.fetch_add(1, Ordering::SeqCst);
+		num_bytes_fuzzed.fetch_add(num_cpp_bytes, Ordering::SeqCst);
 	}
 }
 
@@ -250,6 +255,7 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
 	let num_bugs_found = Arc::new(AtomicUsize::new(0));
+	let num_bytes_fuzzed = Arc::new(AtomicUsize::new(0));
 	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = unsafe { _rdtsc() };
@@ -261,6 +267,7 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		let fuzz_mode = fuzz_mode.clone();
 		let num_cases_state = num_cases_state.clone();
 		let num_bugs_found = num_bugs_found.clone();
+		let num_bytes_fuzzed = num_bytes_fuzzed.clone();
 		
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
@@ -272,7 +279,7 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		
 		let thread_handle = std::thread::spawn(move || {
 			fuzz_simd_codegen_loop::<X86CodegenFuzzer, X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -288,8 +295,13 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
 		let num_bugs_so_far = num_bugs_found.load(Ordering::SeqCst);
 
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs \n",
-			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far);
+		let num_bytes_so_far = num_bytes_fuzzed.load(Ordering::SeqCst);
+		
+		const BYTES_PER_KB : f64 = 1024.0;
+		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
+
+		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
+			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
 	}
 }
 
@@ -299,6 +311,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 
 	let num_cases_state = Arc::new(AtomicUsize::new(0));
 	let num_bugs_found = Arc::new(AtomicUsize::new(0));
+	let num_bytes_fuzzed = Arc::new(AtomicUsize::new(0));
 	
 	let intrinsics_docs_filename = "arm_intrinsics.json";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
@@ -334,6 +347,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 	for thread_id in 0..num_threads {
 		let num_cases_state = num_cases_state.clone();
 		let num_bugs_found = num_bugs_found.clone();
+		let num_bytes_fuzzed = num_bytes_fuzzed.clone();
 		
 		let compilation_tests = compilation_tests.clone();
 		let type_to_intrinsics_map = type_to_intrinsics_map.clone();
@@ -350,7 +364,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 			};
 			
 			fuzz_simd_codegen_loop::<ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -365,9 +379,13 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		let num_cases_so_far = num_cases_state.load(Ordering::SeqCst);
 		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
 		let num_bugs_so_far = num_bugs_found.load(Ordering::SeqCst);
+		let num_bytes_so_far = num_bytes_fuzzed.load(Ordering::SeqCst);
+		
+		const BYTES_PER_KB : f64 = 1024.0;
+		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
 
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs \n",
-			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far);
+		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
+			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
 	}
 }
 
