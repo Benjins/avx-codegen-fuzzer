@@ -14,6 +14,9 @@ const MITIGATION_AVOID_FLOATING_POINT : bool = false;
 // Even if we allow floating point, float16 may not be supported
 const MITIGATION_AVOID_FP16 : bool = true;
 
+// I think this might be triggering a crash bug?
+const MITIGATION_AVOID_REINTERPRET : bool = true;
+
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
 const MITIGATION_AVOID_A64_ONLY : bool = true;
 
@@ -125,6 +128,12 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 			
 			if disallowed_intrinsics.contains(name) {
 				continue;
+			}
+			
+			if MITIGATION_AVOID_REINTERPRET {
+				if name.contains("reinterpret") {
+					continue;
+				}
 			}
 			
 			let return_type = intrinsic_json["return_type"]["value"].as_str().expect("");

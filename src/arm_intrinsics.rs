@@ -209,7 +209,7 @@ pub fn parse_arm_simd_type(type_name : &str) -> ARMSIMDType {
 	}
 }
 
-fn is_base_type_floating_point(base_type : ARMBaseType) -> bool {
+pub fn is_arm_base_type_floating_point(base_type : ARMBaseType) -> bool {
 	match base_type {
 		ARMBaseType::Float16 | ARMBaseType::Float32 | ARMBaseType::Float64 => true,
 		_ => false
@@ -218,10 +218,37 @@ fn is_base_type_floating_point(base_type : ARMBaseType) -> bool {
 
 pub fn is_arm_simd_type_floating_point(simd_type : ARMSIMDType) -> bool {
 	match simd_type {
-		ARMSIMDType::Primitive(base_type) => is_base_type_floating_point(base_type),
+		ARMSIMDType::Primitive(base_type) => is_arm_base_type_floating_point(base_type),
 		ARMSIMDType::ConstantIntImmediate(_, _) => false,
-		ARMSIMDType::SIMD(base_type, _) => is_base_type_floating_point(base_type),
-		ARMSIMDType::SIMDArr(base_type, _, _) => is_base_type_floating_point(base_type)
+		ARMSIMDType::SIMD(base_type, _) => is_arm_base_type_floating_point(base_type),
+		ARMSIMDType::SIMDArr(base_type, _, _) => is_arm_base_type_floating_point(base_type)
+	}
+}
+
+pub fn arm_base_type_size_bytes(base_type : ARMBaseType) -> usize {
+	match base_type {
+		ARMBaseType::Void => panic!("cannot take size of void"),
+		ARMBaseType::Int8 | ARMBaseType::UInt8 => 1,
+		ARMBaseType::Int16 | ARMBaseType::UInt16 => 2,
+		ARMBaseType::Int32 | ARMBaseType::UInt32 => 4,
+		ARMBaseType::Int64 | ARMBaseType::UInt64 => 8,
+		ARMBaseType::Float16 => 2,
+		ARMBaseType::Float32 => 4,
+		ARMBaseType::Float64 => 8,
+		ARMBaseType::Poly8 => 1,
+		ARMBaseType::Poly16 => 2,
+		ARMBaseType::Poly32 => 4,
+		ARMBaseType::Poly64 => 8,
+		ARMBaseType::Poly128 => 16
+	}
+}
+
+pub fn arm_simd_type_size_bytes(simd_type : ARMSIMDType) -> usize {
+	match simd_type {
+		ARMSIMDType::Primitive(base_type) => arm_base_type_size_bytes(base_type),
+		ARMSIMDType::ConstantIntImmediate(_, _) => panic!("Cannot call size on constant immediate"),
+		ARMSIMDType::SIMD(base_type, count) => arm_base_type_size_bytes(base_type) * count as usize,
+		ARMSIMDType::SIMDArr(base_type, count, arr_len) => arm_base_type_size_bytes(base_type) * (count * arr_len) as usize
 	}
 }
 
@@ -231,6 +258,15 @@ pub fn is_arm_simd_type_fp16(simd_type : ARMSIMDType) -> bool {
 		ARMSIMDType::ConstantIntImmediate(_, _) => false,
 		ARMSIMDType::SIMD(base_type, _) => base_type == ARMBaseType::Float16,
 		ARMSIMDType::SIMDArr(base_type, _, _) => base_type == ARMBaseType::Float16
+	}
+}
+
+pub fn is_arm_simd_type_simd(simd_type : ARMSIMDType) -> bool {
+	match simd_type {
+		ARMSIMDType::Primitive(_) => false,
+		ARMSIMDType::ConstantIntImmediate(_, _) => false,
+		ARMSIMDType::SIMD(_, _) => true,
+		ARMSIMDType::SIMDArr(_, _, _) => true
 	}
 }
 
@@ -281,6 +317,71 @@ pub fn arm_simd_type_to_cpp_type_name(simd_type : ARMSIMDType) -> String {
 		ARMSIMDType::ConstantIntImmediate(_, _) => arm_base_type_to_cpp_type_name(ARMBaseType::Int32).to_string(),
 		ARMSIMDType::SIMD(base_type, count) => arm_make_simd_type_name(arm_base_type_to_cpp_type_name(base_type), count),
 		ARMSIMDType::SIMDArr(base_type, count, array_len) => arm_make_simd_arr_type_name(arm_base_type_to_cpp_type_name(base_type), count, array_len)
+	}
+}
+
+fn arm_base_type_to_load_abbrev(base_type : ARMBaseType) -> &'static str {
+	match base_type {
+		ARMBaseType::Void => panic!("cannot call load abbrev on void"),
+		ARMBaseType::Int8 => "s8",
+		ARMBaseType::UInt8 => "u8",
+		ARMBaseType::Int16 => "s16",
+		ARMBaseType::UInt16 => "u16",
+		ARMBaseType::Int32 => "s32",
+		ARMBaseType::UInt32 => "u32",
+		ARMBaseType::Int64 => "s64",
+		ARMBaseType::UInt64 => "u64",
+		ARMBaseType::Float16 => "f16",
+		ARMBaseType::Float32 => "f32",
+		ARMBaseType::Float64 => "f64",
+		ARMBaseType::Poly8 => "p8",
+		ARMBaseType::Poly16 => "p16",
+		ARMBaseType::Poly32 => "p32",
+		ARMBaseType::Poly64 => "p64",
+		ARMBaseType::Poly128 => "p128"
+	}
+}
+
+pub fn arm_simd_type_to_ld_func(simd_type : ARMSIMDType) -> String {
+	let size = arm_simd_type_size_bytes(simd_type);
+	
+	match simd_type {
+		ARMSIMDType::Primitive(base_type) => { panic!("Cannot get load func for primitive"); }
+		ARMSIMDType::ConstantIntImmediate(_, _) => { panic!("Cannot get load func for constant immediate"); }
+		ARMSIMDType::SIMD(base_type, _) => {
+			if size == 8 {
+				let mut ld_func = "vld1_".to_string();
+				ld_func.push_str(arm_base_type_to_load_abbrev(base_type));
+				return ld_func;
+			}
+			else if size == 16 {
+				let mut ld_func = "vld1q_".to_string();
+				ld_func.push_str(arm_base_type_to_load_abbrev(base_type));
+				return ld_func;
+			}
+			else {
+				panic!("Bad size {} on simd type {:?}", size, simd_type);
+			}
+		}
+		ARMSIMDType::SIMDArr(base_type, _, array_len) => {
+			let array_len = array_len as usize;
+			let elem_size = size / array_len;
+			if elem_size == 8 {
+				let mut ld_func = "vld1_".to_string();
+				ld_func.push_str(arm_base_type_to_load_abbrev(base_type));
+				write!(ld_func, "_x{}", array_len).expect("");
+				return ld_func;
+			}
+			else if elem_size == 16 {
+				let mut ld_func = "vld1q_".to_string();
+				ld_func.push_str(arm_base_type_to_load_abbrev(base_type));
+				write!(ld_func, "_x{}", array_len).expect("");
+				return ld_func;
+			}
+			else {
+				panic!("Bad size {}/{} on simd array type {:?}", size, elem_size, simd_type);
+			}
+		}
 	}
 }
 

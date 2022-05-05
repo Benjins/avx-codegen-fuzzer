@@ -230,7 +230,7 @@ pub fn generate_arm_codegen_ctx(ctx : &mut ARMSIMDCodegenCtx, intrinsics_by_type
 	let ending_type = all_intrinsic_return_types[ctx.rng.rand_size() % all_intrinsic_return_types.len()];
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
-	let num_node_iterations : usize = 30;//40 + (ctx.rng.rand_size() % 100);
+	let num_node_iterations : usize = 40 + (ctx.rng.rand_size() % 100);
 	let chance_for_zero_node : f32 = 0.0;//match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
 
 	for ii in 0..num_node_iterations {
@@ -278,10 +278,56 @@ pub fn generate_arm_codegen_ctx(ctx : &mut ARMSIMDCodegenCtx, intrinsics_by_type
 	}
 }
 
-fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, entry_type : ARMSIMDType, num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> (usize, usize, usize) {
-	write!(cpp_code, "\t{} var_{} = {{}};", arm_simd_type_to_cpp_type_name(entry_type), var_idx).expect("");
+fn align_usize(val : usize, alignment : usize) -> usize {
+	(val + alignment - 1) / alignment * alignment
+}
 
+fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, entry_type : ARMSIMDType, num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> (usize, usize, usize) {
 	const SIMD_ALIGNMENT_BYTES : usize = 16;
+
+	let mut num_i_vals = num_i_vals;
+	let mut num_f_vals = num_f_vals;
+	let mut num_d_vals = num_d_vals;
+
+	write!(cpp_code, "\t{} var_{} = ", arm_simd_type_to_cpp_type_name(entry_type), var_idx).expect("");
+
+	let size_of_type = arm_simd_type_size_bytes(entry_type);
+	match entry_type {
+		ARMSIMDType::Primitive(base_type) => {
+			if is_arm_base_type_floating_point(base_type) {
+				write!(cpp_code, "fVals[{}]", num_f_vals).expect("");
+				num_f_vals += (size_of_type + 3) / 4;
+			}
+			else {
+				write!(cpp_code, "({})iVals[{}]", arm_base_type_to_cpp_type_name(base_type), num_f_vals).expect("");
+				num_i_vals += (size_of_type + 3) / 4;
+			}
+		}
+		ARMSIMDType::ConstantIntImmediate(_, _) => { panic!("cannot call arm_generate_cpp_entry_code_for_type on constant immediate"); }
+		ARMSIMDType::SIMD(base_type, _) | ARMSIMDType::SIMDArr(base_type, _, _) => {
+			let ld_func = arm_simd_type_to_ld_func(entry_type);
+			let base_type_name = arm_base_type_to_cpp_type_name(base_type);
+			match base_type {
+				ARMBaseType::Float32 => {
+					num_f_vals = align_usize(num_f_vals, SIMD_ALIGNMENT_BYTES);
+					write!(cpp_code, "{}((const {}*)&fVals[{}])", ld_func, base_type_name, num_f_vals).expect("");
+					num_f_vals += size_of_type / 4;
+				}
+				ARMBaseType::Float64 => {
+					num_d_vals = align_usize(num_d_vals, SIMD_ALIGNMENT_BYTES);
+					write!(cpp_code, "{}((const {}*)&dVals[{}])", ld_func, base_type_name, num_d_vals).expect("");
+					num_d_vals += size_of_type / 8;
+				}
+				_ => {
+					num_i_vals = align_usize(num_i_vals, SIMD_ALIGNMENT_BYTES);
+					write!(cpp_code, "{}((const {}*)&iVals[{}])", ld_func, base_type_name, num_i_vals).expect("");
+					num_i_vals += size_of_type / 4;
+				}
+			}
+		}
+	}
+
+	cpp_code.push_str(";\n");
 
 	// TODO: actually increase these for input sizing on metadata
 	return (num_i_vals, num_f_vals, num_d_vals);
@@ -322,9 +368,6 @@ pub fn generate_cpp_code_from_arm_codegen_ctx(ctx: &ARMSIMDCodegenCtx) -> (Strin
 				num_i_vals = new_num_i_vals;
 				num_f_vals = new_num_f_vals;
 				num_d_vals = new_num_d_vals;
-				
-				// TODO: Can we move this into the function? idk
-				cpp_code.push_str(";\n");
 			}
 			ARMSIMDCodegenNode::Produced(intrinsic_node) => {
 				if intrinsic_node.intrinsic.return_type == ARMSIMDType::Primitive(ARMBaseType::Void) {
