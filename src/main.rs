@@ -10,7 +10,6 @@
 #![feature(associated_type_defaults)]
 
 use std::collections::HashMap;
-//use std::fmt::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -216,12 +215,12 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 }
 
 fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
-		// Open the data xml file for the intrinsics
+	// Open the data xml file for the intrinsics
 	let intrinsics_docs_filename = "data-3.6.0.xml";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
 	
 	if contents.is_err() {
-		print!("Could not open intrinsics docs file '{}'. Maybe you need to download it?\n", intrinsics_docs_filename);
+		print!("Could not open X86 intrinsics docs file '{}'. Maybe you need to download it?\n", intrinsics_docs_filename);
 		return;
 	}
 	let contents = contents.unwrap();
@@ -315,6 +314,12 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 	
 	let intrinsics_docs_filename = "arm_intrinsics.json";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
+	
+	if contents.is_err() {
+		print!("Could not open ARM intrinsics docs file '{}'. Maybe you need to download it?\n", intrinsics_docs_filename);
+		return;
+	}
+	
 	let contents = contents.unwrap();
 	
 	let intrinsics_list = parse_arm_intrinsics_json(&contents);
@@ -390,7 +395,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 }
 
 fn print_usage() {
-	print!("usage: [exe] [fuzz-x86|fuzz-arm] [config_filename]\n");
+	print!("usage: [exe] [fuzz-x86|fuzz-arm] [config_filename] [--threads NUM_THREADS]\n");
 }
 
 fn get_num_threads() -> u32 {

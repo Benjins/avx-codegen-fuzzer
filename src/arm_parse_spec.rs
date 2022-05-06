@@ -154,7 +154,6 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 				continue;
 			}
 
-			//println!("**ARM intrinsic {} returns {} takes {:?}", name, return_type, args);
 			let mut intrinsic_args = Vec::new();
 			let ret_type = parse_arm_simd_type(return_type);
 			for arg in args {
