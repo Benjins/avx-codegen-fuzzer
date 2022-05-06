@@ -216,7 +216,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 
 fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 	// Open the data xml file for the intrinsics
-	let intrinsics_docs_filename = "data-3.6.0.xml";
+	let intrinsics_docs_filename = "data-3-6-1.xml";
 	let contents = std::fs::read_to_string(intrinsics_docs_filename);
 	
 	if contents.is_err() {

@@ -4,16 +4,11 @@ use std::collections::{BTreeSet};
 
 use crate::x86_intrinsics::*;
 
-// You could previously download the XML-formatted spec here:
-// https://software.intel.com/sites/landingpage/IntrinsicsGuide/files/data-3.6.0.xml
+// You can download the XML-formatted spec here:
+// https://www.intel.com/content/dam/develop/public/us/en/include/intrinsics-guide/data-3-6-1.xml
 // archived here:
-// https://web.archive.org/web/20211006023025id_/https://software.intel.com/sites/landingpage/IntrinsicsGuide/files/data-3.6.0.xml
-// Intel seems to have moved it to here:
-// https://www.intel.com/content/dam/develop/public/us/en/include/intrinsics-guide/data-3-6-0.xml
-// which has been archived here:
-// https://web.archive.org/web/20211024134604/https://www.intel.com/content/dam/develop/public/us/en/include/intrinsics-guide/data-3-6-0.xml
-// These all seem to be the same. If the version changes, we might need to change the parsing code.
-// But the archived versions should still work with this version of code
+// https://web.archive.org/web/20211222223747id_/https://www.intel.com/content/dam/develop/public/us/en/include/intrinsics-guide/data-3-6-1.xml
+
 
 // Clang currently (as of Sept. 19, 2021) has a bug where it marks this opcode as commutative,
 // but this leads to different results
