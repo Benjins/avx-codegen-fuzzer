@@ -3,9 +3,6 @@
 use crate::arm_intrinsics::*;
 
 use std::collections::HashMap;
-use std::convert::TryInto;
-
-use std::fmt::Write;
 
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
@@ -153,7 +150,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		return (cpp_code, meta_data);
 	}
 
-	fn generate_random_input(&self, code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
+	fn generate_random_input(&self, _code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
 		todo!();
 	}
 
@@ -163,15 +160,15 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	}
 
 	// Actually execute it: this is probably like local, but 
-	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
+	fn execute(&self, _exec_page : &ExecPage, _code_meta: &Self::CodeMeta, _input : &Self::FuzzerInput) -> Self::FuzzerOutput {
 		todo!();
 	}
 
-	fn are_outputs_the_same(&self, o1 : &Self::FuzzerOutput, o2 : &Self::FuzzerOutput) -> bool {
+	fn are_outputs_the_same(&self, _o1 : &Self::FuzzerOutput, _o2 : &Self::FuzzerOutput) -> bool {
 		todo!();
 	}
 	
-	fn save_input_to_string(&self, input : &Self::FuzzerInput) -> String {
+	fn save_input_to_string(&self, _input : &Self::FuzzerInput) -> String {
 		todo!();
 	}
 }

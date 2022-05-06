@@ -51,7 +51,6 @@ pub fn parse_arm_simd_type(type_name : &str) -> ARMSIMDType {
 		"uint16_t" => ARMSIMDType::Primitive(ARMBaseType::UInt16),
 		"uint32_t" => ARMSIMDType::Primitive(ARMBaseType::UInt32),
 		"uint64_t" => ARMSIMDType::Primitive(ARMBaseType::UInt64),
-		"uint64_t" => ARMSIMDType::Primitive(ARMBaseType::UInt64),
 
 		"float16_t" => ARMSIMDType::Primitive(ARMBaseType::Float16),
 		"float32_t" => ARMSIMDType::Primitive(ARMBaseType::Float32),
@@ -298,7 +297,7 @@ fn arm_make_simd_type_name(base_type_name : &str, count : i32) -> String {
 	
 	// Remote the '_t' at the end
 	for _ in 0..2 { type_name.pop(); }
-	write!(&mut type_name, "x{}_t", count);
+	write!(&mut type_name, "x{}_t", count).expect("");
 	return type_name;
 }
 
@@ -307,7 +306,7 @@ fn arm_make_simd_arr_type_name(base_type_name : &str, count : i32, array_len : i
 	
 	// Remote the '_t' at the end
 	for _ in 0..2 { type_name.pop(); }
-	write!(&mut type_name, "x{}x{}_t", count, array_len);
+	write!(&mut type_name, "x{}x{}_t", count, array_len).expect(""	);
 	return type_name;
 }
 
@@ -346,7 +345,7 @@ pub fn arm_simd_type_to_ld_func(simd_type : ARMSIMDType) -> String {
 	let size = arm_simd_type_size_bytes(simd_type);
 	
 	match simd_type {
-		ARMSIMDType::Primitive(base_type) => { panic!("Cannot get load func for primitive"); }
+		ARMSIMDType::Primitive(_) => { panic!("Cannot get load func for primitive"); }
 		ARMSIMDType::ConstantIntImmediate(_, _) => { panic!("Cannot get load func for constant immediate"); }
 		ARMSIMDType::SIMD(base_type, _) => {
 			if size == 8 {

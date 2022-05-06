@@ -115,7 +115,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 								_ => { panic!("Bad reloc target type"); }
 							}
 						}
-						object::RelocationKind::Elf(extra_data) => {
+						object::RelocationKind::Elf(_extra_data) => {
 							let reloc_target = reloc.target();
 							match reloc_target {
 								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
@@ -127,9 +127,6 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 						}
 						_ => { panic!("Bad relocation kind {:?}", reloc); }
 					}
-					// TODO:
-					// thread 'main' panicked at
-					// 'Bad relocation kind Relocation { kind: Elf(275), encoding: Generic, size: 0, target: Symbol(SymbolIndex(3)), addend: 0, implicit_addend: false }', src\parse_exe.rs:115:25
 					
 				}
 				
