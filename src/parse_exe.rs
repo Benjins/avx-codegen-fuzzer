@@ -61,7 +61,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 				//let size = symbol.size() as usize;
 				//println!("Lookup in .text of symbol do_stuff_2 ({} bytes): {:#x?}", size, &data[addr..]);
 				
-				let mut exec_page = ExecPage::new(5);
+				let mut exec_page = ExecPage::new(16);
 				// TODO: alignment of sections that need it
 				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
 				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);

@@ -14,8 +14,9 @@ const MITIGATION_AVOID_FLOATING_POINT : bool = false;
 // Even if we allow floating point, float16 may not be supported
 const MITIGATION_AVOID_FP16 : bool = true;
 
-// I think this might be triggering a crash bug?
-const MITIGATION_AVOID_REINTERPRET : bool = true;
+// An issue with NVCAST not having all type combinations specified,
+// fixed in 830c18047bf8ce6d4d85345567847d344f97e975
+const MITIGATION_AVOID_REINTERPRET : bool = false;
 
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
 const MITIGATION_AVOID_A64_ONLY : bool = true;
@@ -76,6 +77,10 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vsudotq_lane_u32");
 	disallowed_intrinsics.insert("vusdotq_lane_s32");
 	disallowed_intrinsics.insert("vusdotq_lane_u32");
+	disallowed_intrinsics.insert("vdotq_laneq_u32");
+	disallowed_intrinsics.insert("vdotq_laneq_s32");
+	disallowed_intrinsics.insert("vdot_laneq_s32");
+	disallowed_intrinsics.insert("vdot_laneq_u32");
 
 	// SHA-1 stuff...seriously of all the SHA's they chose SHA-1 to accelerate?
 	disallowed_intrinsics.insert("vsha1cq_u32");
@@ -96,6 +101,25 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vmmlaq_u32");
 	disallowed_intrinsics.insert("vusmmlaq_s32");
 	disallowed_intrinsics.insert("vusmmlaq_u32");
+
+	// rounding?
+	disallowed_intrinsics.insert("vrnd64z_f32");
+	disallowed_intrinsics.insert("vrnd64zq_f32");
+	disallowed_intrinsics.insert("vrnd64z_f64");
+	disallowed_intrinsics.insert("vrnd64zq_f64");
+	disallowed_intrinsics.insert("vrnd64x_f32");
+	disallowed_intrinsics.insert("vrnd64xq_f32");
+	disallowed_intrinsics.insert("vrnd64x_f64");
+	disallowed_intrinsics.insert("vrnd64xq_f64");
+
+	disallowed_intrinsics.insert("vrnd32z_f32");
+	disallowed_intrinsics.insert("vrnd32zq_f32");
+	disallowed_intrinsics.insert("vrnd32z_f64");
+	disallowed_intrinsics.insert("vrnd32zq_f64");
+	disallowed_intrinsics.insert("vrnd32x_f32");
+	disallowed_intrinsics.insert("vrnd32xq_f32");
+	disallowed_intrinsics.insert("vrnd32x_f64");
+	disallowed_intrinsics.insert("vrnd32xq_f64");
 
 	return disallowed_intrinsics;
 }
