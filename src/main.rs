@@ -299,7 +299,7 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		const BYTES_PER_KB : f64 = 1024.0;
 		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
 
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
+		print!("X86 | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
 			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
 	}
 }
@@ -389,7 +389,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		const BYTES_PER_KB : f64 = 1024.0;
 		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
 
-		print!("{:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
+		print!("ARM | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
 			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
 	}
 }
