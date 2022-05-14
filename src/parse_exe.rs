@@ -67,15 +67,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 			let symbol_name = symbol.name().expect("");
 			if symbol_name == func_name {
 				let addr = symbol.address() as usize;
-				//let size = symbol.size() as usize;
-				//println!("Lookup in .text of symbol do_stuff_2 ({} bytes): {:#x?}", size, &data[addr..]);
-				
 				let mut exec_page = ExecPage::new(16);
-				// TODO: alignment of sections that need it
 				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
 				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);
-				
-				//let mut has_elf_reloc = false;
 				
 				for (reloc_addr, reloc) in section.relocations() {
 					match reloc.kind() {
@@ -131,25 +125,13 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
 									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
 									let target_symbol_section = obj_file.section_by_index(target_symbol.section_index().unwrap()).expect("bad section index");
-									//println!("TODO: ELF with elf-specific relocations {} ? reloc = {:?} symbol = {:?} section = {:?} reloc_addr = {}",
-									//	extra_data, reloc, target_symbol, target_symbol_section, reloc_addr);
-									
-									//std::fs::write("arm_reloc_test.elf", bin_data).expect("failed to write file");
-									//panic!("doen");
-									
+
 									let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
 									let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_symbol_section.index()).unwrap();
 									let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64 + reloc.addend();
 									
-									
-									//has_elf_reloc = true;
-									
 									assert!(reloc.has_implicit_addend() == false);
-									//assert!(reloc.addend() == 0);
-									
-									// pub fn fix_up_arm_adrp_redirect(&mut self, write_offset : usize, value : i64)
-									// pub fn fix_up_arm_ldr_offset_redirect(&mut self, write_offset : usize, value : i64)
-									
+
 									// ADRP page upper bits
 									if extra_data == 275 {
 										//let addend = ;
@@ -173,10 +155,6 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 2;
 										//println!("encoded_reloc_offset_from_page = {}", encoded_reloc_offset_from_page);
 										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 9);
-
-										//has_elf_reloc = true;
-										//println!("ENCOUNTEDED 286");
-										
 									}
 									// ADD immediate operand for adrp lower bits
 									else if extra_data == 277 {
@@ -189,6 +167,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										exec_page.fix_up_arm_add_immediate(reloc_insert_offset_in_memory as usize, reloc_offset_from_page_boundary as i32);
 									}
 									else {
+										std::fs::write("arm_reloc_unknown.elf", bin_data).expect("failed to write file");
 										panic!("Unknown extra data {} in Elf arch-specific relocation", extra_data);
 									}
 								}
@@ -199,13 +178,6 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 					}
 					
 				}
-				
-				//if has_elf_reloc {
-				//	println!("func offset = {}", exec_page.get_func_offset());
-				//	std::fs::write("arm_reloc_test.elf", bin_data).expect("failed to write file");
-				//	std::fs::write("arm_reloc_test_raw.bin", &exec_page.get_bytes()).expect("failed to write file");
-				//}
-
 
 				return Some(exec_page);
 			}
