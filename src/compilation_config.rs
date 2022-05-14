@@ -111,6 +111,10 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 	
 	let mut generated_codes = Vec::<CompiledCodeOutput>::new();
 	
+	//println!("-------CODE-----------------");
+	//println!("{}", code);
+	//println!("----------------------------");
+	
 	for compile in compiles {
 		let compile_result = run_process_with_timeout(&compile.compiler_exe, &compile.compiler_args, code, Some(compile.timeout_seconds));
 

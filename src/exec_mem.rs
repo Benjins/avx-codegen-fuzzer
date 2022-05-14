@@ -2,6 +2,8 @@
 
 use executable_memory::ExecutableMemory;
 
+use std::convert::TryInto;
+
 use core::arch::x86_64::__m256i;
 use core::arch::x86_64::__m128i;
 
@@ -22,7 +24,7 @@ impl ExecPage {
 		self.func_offset = func_offset;
 	}
 	
-	pub fn fix_up_redirect(&mut self, write_offset : usize, write_len_bits : usize, value : i64) {
+	pub fn fix_up_redirect(&mut self, write_offset : usize, write_len_bits : usize, value : i64, implicit_addend : bool) {
 		assert!(write_len_bits % 8 == 0);
 		let write_len_bytes = write_len_bits / 8;
 		
@@ -36,9 +38,28 @@ impl ExecPage {
 			i64::from_le_bytes(current_value_byte_array)
 		};
 
-		let new_value = value + current_value_int;
+		let new_value = value + if implicit_addend { current_value_int } else { 0 };
 		let new_value_bytes = new_value.to_le_bytes();
 		self.page[write_offset..write_offset+write_len_bytes].clone_from_slice(&new_value_bytes[..write_len_bytes]);
+	}
+	
+	pub fn fix_up_arm_adrp_redirect(&mut self, write_offset : usize, value : i32) {
+		let current_value_bytes = &self.page[write_offset..write_offset+4];
+		let current_value_int = i32::from_le_bytes(current_value_bytes.try_into().expect(""));
+		let new_value_int = current_value_int | (value << 3);
+		
+		let new_value_bytes = new_value_int.to_le_bytes();
+		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
+	}
+	
+	pub fn fix_up_arm_ldr_offset_redirect(&mut self, write_offset : usize, value : i32, shift : i32) {
+		let current_value_bytes = &self.page[write_offset..write_offset+4];
+		let current_value_int = i32::from_le_bytes(current_value_bytes.try_into().expect(""));
+		assert!(value >= 0);
+		let new_value_int = current_value_int | (value << shift);
+		
+		let new_value_bytes = new_value_int.to_le_bytes();
+		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
 	}
 	
 	pub fn execute_with_args_256i(&self, i_vals: &[i32], f_vals: &[f32], d_vals: &[f64]) -> __m256i {
@@ -61,5 +82,13 @@ impl ExecPage {
 		};
 
 		return ret;
+	}
+	
+	pub fn get_bytes(&self) -> &[u8] {
+		return &self.page[..];
+	}
+	
+	pub fn get_func_offset(&self) -> usize {
+		return self.func_offset;
 	}
 }

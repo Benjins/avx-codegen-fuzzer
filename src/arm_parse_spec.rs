@@ -19,7 +19,9 @@ const MITIGATION_AVOID_FP16 : bool = true;
 const MITIGATION_AVOID_REINTERPRET : bool = false;
 
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
-const MITIGATION_AVOID_A64_ONLY : bool = true;
+const MITIGATION_AVOID_A64_ONLY : bool = false;
+
+const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = true;
 
 
 pub fn ignore_type_name_if(type_name : &str) -> bool {
@@ -134,15 +136,17 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 	for intrinsic_json in spec_json.as_array().expect("ARM spec should be a single global JSON array") {
 		if intrinsic_json["SIMD_ISA"].as_str().expect("") == "Neon" {
 			
-			if MITIGATION_AVOID_A64_ONLY {
-				let mut a64_only = true;
-				for arch in intrinsic_json["Architectures"].as_array().expect("") {
-					if arch != "A64" {
-						a64_only = false;
-						break;
-					}
+			let mut a64_only = true;
+			for arch in intrinsic_json["Architectures"].as_array().expect("") {
+				if arch != "A64" {
+					a64_only = false;
+					break;
 				}
-				
+			}
+			
+			let a64_only = a64_only;
+			
+			if MITIGATION_AVOID_A64_ONLY {
 				if a64_only {
 					continue;
 				}
@@ -152,6 +156,12 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 			
 			if disallowed_intrinsics.contains(name) {
 				continue;
+			}
+			
+			if MITIGATION_AVOID_A64_ONLY_CVT_FLOAT {
+				if name.starts_with("vcvt") && a64_only {
+					continue;
+				}
 			}
 			
 			if MITIGATION_AVOID_REINTERPRET {
@@ -206,6 +216,7 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 					continue;
 				}
 			}
+			
 
 			let intrinsic = ARMSIMDIntrinsic{intrinsic_name: name.to_string(), return_type: ret_type, param_types: intrinsic_args};
 			//println!("intrinsic {:?}", intrinsic);
