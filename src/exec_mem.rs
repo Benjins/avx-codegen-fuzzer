@@ -62,6 +62,16 @@ impl ExecPage {
 		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
 	}
 	
+	pub fn fix_up_arm_add_immediate(&mut self, write_offset : usize, value : i32) {
+		let current_value_bytes = &self.page[write_offset..write_offset+4];
+		let current_value_int = i32::from_le_bytes(current_value_bytes.try_into().expect(""));
+		assert!(value >= 0);
+		let new_value_int = current_value_int | (value << 10);
+		
+		let new_value_bytes = new_value_int.to_le_bytes();
+		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
+	}
+	
 	pub fn execute_with_args_256i(&self, i_vals: &[i32], f_vals: &[f32], d_vals: &[f64]) -> __m256i {
 		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
 		let func: unsafe extern "C" fn(*const i32, *const f32, *const f64) -> __m256i = unsafe { std::mem::transmute(func_ptr) };

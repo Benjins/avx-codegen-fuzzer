@@ -7,6 +7,7 @@ use object::read::SectionIndex;
 // which implement Hash but not Ord. Of course we could just get at the underlying usize field in them,
 // but I've already taken the time the write out this comment explaining my decision so it's now final
 use std::collections::HashMap;
+use std::collections::BTreeSet;
 //use std::collections::BTreeMap;
 
 
@@ -29,8 +30,16 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let mut bytes_loaded_into_memory = Vec::<u8>::with_capacity(16*1024);
 	let mut section_to_memory_addr = HashMap::<SectionIndex, usize>::new();
 	
+	let forbidden_sections = {
+		let mut forbidden_sections = BTreeSet::new();
+		forbidden_sections.insert(".comment");
+
+		forbidden_sections
+	};
+	
 	for section in obj_file.sections() {
-		if section.size() > 0 {
+		let section_name = section.name();
+		if section.size() > 0 && (section_name.is_err() || !forbidden_sections.contains(section_name.unwrap())) {
 			align_vec(&mut bytes_loaded_into_memory, section.align() as usize);
 			section_to_memory_addr.insert(section.index(), bytes_loaded_into_memory.len());
 			
@@ -156,6 +165,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 2;
 										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 8);
 									}
+									// LDR offset for d* registers
 									else if extra_data == 286 {
 										assert!(reloc_offset_in_memory >= 0);
 										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
@@ -168,8 +178,17 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										//println!("ENCOUNTEDED 286");
 										
 									}
+									// ADD immediate operand for adrp lower bits
+									else if extra_data == 277 {
+										//has_elf_reloc = true;
+										
+										assert!(reloc_offset_in_memory >= 0);
+										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
+										assert!(reloc_offset_from_page_boundary % 8 == 0);
+										
+										exec_page.fix_up_arm_add_immediate(reloc_insert_offset_in_memory as usize, reloc_offset_from_page_boundary as i32);
+									}
 									else {
-										std::fs::write("arm_reloc_test_other.elf", bin_data).expect("failed to write file");
 										panic!("Unknown extra data {} in Elf arch-specific relocation", extra_data);
 									}
 								}
