@@ -251,12 +251,12 @@ pub fn arm_simd_type_size_bytes(simd_type : ARMSIMDType) -> usize {
 	}
 }
 
-pub fn is_arm_simd_type_fp16(simd_type : ARMSIMDType) -> bool {
+pub fn is_arm_simd_type_base_type(simd_type : ARMSIMDType, in_base_type : ARMBaseType) -> bool {
 	match simd_type {
-		ARMSIMDType::Primitive(base_type) => base_type == ARMBaseType::Float16,
+		ARMSIMDType::Primitive(base_type) => base_type == in_base_type,
 		ARMSIMDType::ConstantIntImmediate(_, _) => false,
-		ARMSIMDType::SIMD(base_type, _) => base_type == ARMBaseType::Float16,
-		ARMSIMDType::SIMDArr(base_type, _, _) => base_type == ARMBaseType::Float16
+		ARMSIMDType::SIMD(base_type, _) => base_type == in_base_type,
+		ARMSIMDType::SIMDArr(base_type, _, _) => base_type == in_base_type
 	}
 }
 

@@ -55,6 +55,8 @@ use arm_codegen_ctx::ARMSIMDCodegenCtx;
 mod arm_codegen_fuzzing;
 use arm_codegen_fuzzing::{ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues};
 
+mod code_exe_server_conn;
+
 fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	let mut hasher = Sha256::new();
 	hasher.update(input);
@@ -111,8 +113,13 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 		let codegen_ctx = fuzzer.generate_ctx();
 		
 		let (cpp_code, code_meta) = fuzzer.generate_cpp_code(&codegen_ctx);
+
+		//println!("----------CODE-------------");
+		//println!("{}", cpp_code);
+		//println!("---------------------------");
+
 		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
-		
+
 		// TODO: UTF-8, bytes not necessarily same as chars, idk what rust gives but we only do ascii in this house so w/e
 		let num_cpp_bytes = cpp_code.len();
 

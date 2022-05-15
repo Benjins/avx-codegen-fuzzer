@@ -14,6 +14,10 @@ use crate::arm_codegen_ctx::{generate_arm_codegen_ctx, generate_cpp_code_from_ar
 
 use crate::exec_mem::ExecPage;
 
+use crate::code_exe_server_conn::{CodeExeAndInput, CodeExeServClient};
+
+
+// 192.168.86.153 for exe server
 
 
 pub struct ARMCodegenFuzzerCodeMetadata {
@@ -31,7 +35,8 @@ pub struct ARMCodegenFuzzerThreadInput {
 pub struct ARMCodegenFuzzer {
 	type_to_intrinsics_map : HashMap<ARMSIMDType, Vec<ARMSIMDIntrinsic>>,
 	all_intrinsic_return_types : Vec<ARMSIMDType>,
-	outer_rng : Rand
+	outer_rng : Rand,
+	code_exe_serv : CodeExeServClient
 }
 
 #[derive(Clone, Debug)]
@@ -165,6 +170,59 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 	return ARMCodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
 
+fn base_type_to_core_type_and_ln2_bits(base_type : ARMBaseType) -> (u32, u32) {
+	match base_type {
+		ARMBaseType::Void => panic!("cannot call base_type_to_core_type_and_ln2_bits on void"),
+		ARMBaseType::Int8 => (0, 3),
+		ARMBaseType::UInt8 => (1, 3),
+		ARMBaseType::Int16 => (0, 4),
+		ARMBaseType::UInt16 => (1, 4),
+		ARMBaseType::Int32 => (0, 5),
+		ARMBaseType::UInt32 => (1, 5),
+		ARMBaseType::Int64 => (0, 6),
+		ARMBaseType::UInt64 => (1, 6),
+		ARMBaseType::Float16 => (2, 4),
+		ARMBaseType::Float32 => (2, 5),
+		ARMBaseType::Float64 => (2, 6),
+		ARMBaseType::Poly8 => (3, 3),
+		ARMBaseType::Poly16 => (3, 4),
+		ARMBaseType::Poly32 => (3, 5),
+		ARMBaseType::Poly64 => (3, 6),
+		ARMBaseType::Poly128 => (3, 7)
+	}
+}
+
+// is there a log2? I don't know, and it is far too late at night for me to care
+// ALSO: +1 to the log2 so we can use 0 to show that it's a primitive...idk y;all
+fn encode_simd_count(count : u32) -> u32 {
+	match count {
+		1 => 1,
+		2 => 2,
+		4 => 3,
+		8 => 4,
+		16 => 5,
+		_ => panic!("bad simd count encoded {}", count)
+	}
+}
+
+fn encode_return_type(return_type : ARMSIMDType) -> u32 {
+	match return_type {
+		ARMSIMDType::Primitive(base_type) => {
+			let (core_type, ln2_bits) = base_type_to_core_type_and_ln2_bits(base_type);
+			return core_type | (ln2_bits << 2);
+		}
+		ARMSIMDType::SIMD(base_type, count) => {
+			let (core_type, ln2_bits) = base_type_to_core_type_and_ln2_bits(base_type);
+			return core_type | (ln2_bits << 2) | (encode_simd_count(count as u32) << 5);
+		}
+		ARMSIMDType::SIMDArr(base_type, count, array_len) => {
+			let (core_type, ln2_bits) = base_type_to_core_type_and_ln2_bits(base_type);
+			return core_type | (ln2_bits << 2) | (encode_simd_count(count as u32) << 5) | (((array_len - 1) as u32) << 8);
+		}
+		_ => { panic!("bad return type {:?}", return_type); }
+	}
+}
+
 impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues> for ARMCodegenFuzzer {
 	// Each of these will go on a thread, can contain inputs like
 	// a parsed spec data, seed, flags, config, etc.
@@ -174,10 +232,13 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 			all_intrinsic_return_types.push(*ret_type);
 		}
 
+		const EXE_SERVER_ADDR_AND_PORT : &str = "192.168.86.153:6821";
+
 		ARMCodegenFuzzer {
 			type_to_intrinsics_map: input_data.type_to_intrinsics_map,
 			all_intrinsic_return_types: all_intrinsic_return_types,
-			outer_rng: Rand::new(input_data.thread_seed)
+			outer_rng: Rand::new(input_data.thread_seed),
+			code_exe_serv: CodeExeServClient::new(EXE_SERVER_ADDR_AND_PORT)
 		}
 	}
 
@@ -210,8 +271,32 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	}
 
 	// Actually execute it: this is probably like local, but 
-	fn execute(&self, _exec_page : &ExecPage, _code_meta: &Self::CodeMeta, _input : &Self::FuzzerInput) -> Self::FuzzerOutput {
-		todo!();
+	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
+		
+		let encoded_return_type = encode_return_type(code_meta.return_type);
+		println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
+
+		let code_exe_and_input = CodeExeAndInput {
+			code_bytes: exec_page.get_bytes(),
+			func_offset: exec_page.get_func_offset() as u32,
+			i_vals: &input.i_vals[..],
+			f_vals: &input.f_vals[..],
+			d_vals: &input.d_vals[..],
+			return_type : encoded_return_type
+		};
+
+		let maybe_output = self.code_exe_serv.send_exe_and_input(&code_exe_and_input);
+		match maybe_output {
+			Ok(output_vec) => {
+				println!("woo hoo, we got an actual output {:?}", output_vec);
+				//todo!();
+				return ARMSIMDOutputValues{ output_bytes: [0u8 ; 64], output_len: 0 };
+			}
+			Err(err) => {
+				panic!("Oh no, we got an IO error {}", err);
+			}
+		}
+		
 	}
 
 	fn are_outputs_the_same(&self, o1 : &Self::FuzzerOutput, o2 : &Self::FuzzerOutput) -> bool {

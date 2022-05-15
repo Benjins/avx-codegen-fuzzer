@@ -9,7 +9,12 @@ use std::collections::BTreeSet;
 
 
 // Floating point is for now too much of a headache to fuzz the way we do, unless we're doing crash-only
-const MITIGATION_AVOID_FLOATING_POINT : bool = false;
+const MITIGATION_AVOID_FLOATING_POINT : bool = true;
+
+// I don't know if these are supported everywhere?
+const MITIGATION_AVOID_POLY128 : bool = true;
+const MITIGATION_AVOID_POLY64 : bool = true;
+const MITIGATION_AVOID_POLY32 : bool = true;
 
 // Even if we allow floating point, float16 may not be supported
 const MITIGATION_AVOID_FP16 : bool = true;
@@ -19,7 +24,7 @@ const MITIGATION_AVOID_FP16 : bool = true;
 const MITIGATION_AVOID_REINTERPRET : bool = false;
 
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
-const MITIGATION_AVOID_A64_ONLY : bool = false;
+const MITIGATION_AVOID_A64_ONLY : bool = true;
 
 const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = true;
 
@@ -211,8 +216,30 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 				}
 			}
 			
+			if MITIGATION_AVOID_POLY128 {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly128)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly128)) {
+					continue;
+				}
+			}
+			
+			if MITIGATION_AVOID_POLY64 {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly64)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly64)) {
+					continue;
+				}
+			}
+			
+			if MITIGATION_AVOID_POLY32 {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly32)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly32)) {
+					continue;
+				}
+			}
+			
 			if MITIGATION_AVOID_FP16 {
-				if is_arm_simd_type_fp16(ret_type) || intrinsic_args.iter().any(|&arg| is_arm_simd_type_fp16(arg)) {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Float16)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Float16)) {
 					continue;
 				}
 			}

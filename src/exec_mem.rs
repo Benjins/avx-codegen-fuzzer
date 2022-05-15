@@ -10,18 +10,20 @@ use core::arch::x86_64::__m128i;
 #[derive(Debug)]
 pub struct ExecPage {
 	page : ExecutableMemory,
-	func_offset : usize
+	func_offset : usize,
+	code_size : usize
 }
 
 impl ExecPage {
 	pub fn new(num_pages : usize) -> ExecPage {
-		return ExecPage { page: ExecutableMemory::new(num_pages), func_offset: 0 }
+		return ExecPage { page: ExecutableMemory::new(num_pages), func_offset: 0, code_size: 0 }
 	}
 
 	pub fn load_with_code(&mut self, instructions : &[u8], func_offset : usize) {
 		let num_bytes = instructions.len();
 		self.page[..num_bytes].clone_from_slice(instructions);
 		self.func_offset = func_offset;
+		self.code_size = num_bytes;
 	}
 	
 	pub fn fix_up_redirect(&mut self, write_offset : usize, write_len_bits : usize, value : i64, implicit_addend : bool) {
@@ -95,7 +97,7 @@ impl ExecPage {
 	}
 	
 	pub fn get_bytes(&self) -> &[u8] {
-		return &self.page[..];
+		return &self.page[..self.code_size];
 	}
 	
 	pub fn get_func_offset(&self) -> usize {
