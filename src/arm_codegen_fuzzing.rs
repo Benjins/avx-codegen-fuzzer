@@ -4,6 +4,8 @@ use crate::arm_intrinsics::*;
 
 use std::collections::HashMap;
 
+use std::fmt::Write;
+
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
@@ -39,9 +41,33 @@ pub struct ARMCodeFuzzerInputValues {
 	pub d_vals : Vec<f64>
 }
 
+impl ARMCodeFuzzerInputValues {
+	pub fn write_to_str(&self) -> String {
+		let mut out_str = String::with_capacity(4096);
+
+		write!(out_str, "{}\n", self.i_vals.len()).expect("");
+		for i_val in self.i_vals.iter() {
+			write!(out_str, "{} ", i_val).expect("");
+		}
+		
+		write!(out_str, "{}\n", self.f_vals.len()).expect("");
+		for f_val in self.f_vals.iter() {
+			write!(out_str, "{} ", f_val).expect("");
+		}
+		
+		write!(out_str, "{}\n", self.d_vals.len()).expect("");
+		for d_val in self.d_vals.iter() {
+			write!(out_str, "{} ", d_val).expect("");
+		}
+		
+		return out_str;
+	}
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct ARMSIMDOutputValues {
-	output_bytes : [u8; 64]
+	pub output_bytes : [u8; 64],
+	pub output_len : usize
 }
 
 
@@ -115,6 +141,30 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 	return best_ctx.clone();
 }
 
+fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> ARMCodeFuzzerInputValues {
+	let mut rng = Rand::default();
+
+	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
+	for _ in 0..num_i_vals {
+		let rand_val = match (rng.rand() % 16) {
+			0 =>  0,
+			1 =>  1,
+			2 =>  2,
+			3 => -1,
+			_ => rng.rand() as i32
+		};
+		i_vals.push(rand_val);
+	}
+	
+	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
+	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
+	
+	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
+	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
+
+	return ARMCodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
+}
+
 impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues> for ARMCodegenFuzzer {
 	// Each of these will go on a thread, can contain inputs like
 	// a parsed spec data, seed, flags, config, etc.
@@ -150,8 +200,8 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		return (cpp_code, meta_data);
 	}
 
-	fn generate_random_input(&self, _code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
-		todo!();
+	fn generate_random_input(&self, code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
+		return generate_random_input_for_program(code_meta.num_i_vals, code_meta.num_f_vals, code_meta.num_d_vals);
 	}
 
 	// uhh.....idk
@@ -164,12 +214,17 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		todo!();
 	}
 
-	fn are_outputs_the_same(&self, _o1 : &Self::FuzzerOutput, _o2 : &Self::FuzzerOutput) -> bool {
-		todo!();
+	fn are_outputs_the_same(&self, o1 : &Self::FuzzerOutput, o2 : &Self::FuzzerOutput) -> bool {
+		if o1.output_len == o2.output_len {
+			return &o1.output_bytes[..o1.output_len] == &o2.output_bytes[..o2.output_len];
+		}
+		else {
+			return false;
+		}
 	}
 	
-	fn save_input_to_string(&self, _input : &Self::FuzzerInput) -> String {
-		todo!();
+	fn save_input_to_string(&self, input : &Self::FuzzerInput) -> String {
+		return input.write_to_str();
 	}
 	
 	fn num_inputs_per_codegen(&self) -> u32 {
