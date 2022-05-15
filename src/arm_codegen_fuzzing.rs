@@ -288,9 +288,18 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		let maybe_output = self.code_exe_serv.send_exe_and_input(&code_exe_and_input);
 		match maybe_output {
 			Ok(output_vec) => {
-				println!("woo hoo, we got an actual output {:?}", output_vec);
-				//todo!();
-				return ARMSIMDOutputValues{ output_bytes: [0u8 ; 64], output_len: 0 };
+				
+				assert!(output_vec.len() <= 64);
+				
+				let mut output_bytes = [0u8 ; 64];
+				
+				for (ii, val) in output_vec.iter().enumerate() {
+					output_bytes[ii] = *val;
+				}
+				
+				let actual_out = ARMSIMDOutputValues{ output_bytes: output_bytes, output_len: output_vec.len() };
+				println!("woo hoo, we got an actual output {:?}", actual_out);
+				return actual_out;
 			}
 			Err(err) => {
 				panic!("Oh no, we got an IO error {}", err);
