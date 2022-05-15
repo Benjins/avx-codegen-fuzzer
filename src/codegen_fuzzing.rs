@@ -31,6 +31,8 @@ pub trait CodegenFuzzer<InputData, CtxType, CodeMetadata, RunInputs, RunOutputs>
 	fn are_outputs_the_same(&self, o1 : &RunOutputs, o2 : &RunOutputs) -> bool;
 	
 	fn save_input_to_string(&self, input: &RunInputs) -> String;
+	
+	fn num_inputs_per_codegen(&self) -> u32;
 }
 
 

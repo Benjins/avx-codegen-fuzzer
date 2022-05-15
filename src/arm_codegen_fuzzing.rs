@@ -171,6 +171,10 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	fn save_input_to_string(&self, _input : &Self::FuzzerInput) -> String {
 		todo!();
 	}
+	
+	fn num_inputs_per_codegen(&self) -> u32 {
+		1
+	}
 }
 
 

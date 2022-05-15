@@ -105,6 +105,8 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 	
 	let mut fuzzer = FuzzType::new_fuzzer_state(input);
 	
+	let num_inputs_per_codegen = fuzzer.num_inputs_per_codegen();
+	
 	loop {
 		let codegen_ctx = fuzzer.generate_ctx();
 		
@@ -138,9 +140,8 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 			}
 			GenCodeResult::Success(ref compiled_outputs) => {
 				if matches!(fuzz_mode, GenCodeFuzzMode::CrashAndDiff) {
-					const NUM_INPUTS_PER_CODEGEN : i32 = 1000;
 					let mut bad_input : Option<FuzzerInput> = None;
-					for _ in 0..NUM_INPUTS_PER_CODEGEN {
+					for _ in 0..num_inputs_per_codegen {
 						let input = fuzzer.generate_random_input(&code_meta);
 
 						let mut all_outputs_same = true;
