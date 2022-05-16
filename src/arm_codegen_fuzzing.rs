@@ -274,7 +274,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
 		
 		let encoded_return_type = encode_return_type(code_meta.return_type);
-		println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
+		//println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
 
 		let code_exe_and_input = CodeExeAndInput {
 			code_bytes: exec_page.get_bytes(),
@@ -298,7 +298,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 				}
 				
 				let actual_out = ARMSIMDOutputValues{ output_bytes: output_bytes, output_len: output_vec.len() };
-				println!("woo hoo, we got an actual output {:?}", actual_out);
+				//println!("woo hoo, we got an actual output {:?}", actual_out);
 				return actual_out;
 			}
 			Err(err) => {

@@ -41,7 +41,7 @@ impl<'a> CodeExeServClient {
 		//println!("Sending return type {}", exe_and_input.return_type);
 		
 		overall_msg.extend_from_slice(&exe_and_input.func_offset.to_be_bytes());
-		println!("Sending func offset {}", exe_and_input.func_offset);
+		//println!("Sending func offset {}", exe_and_input.func_offset);
 		
 		{
 			let code_len_bytes = (exe_and_input.code_bytes.len() as u32).to_be_bytes();
@@ -49,7 +49,7 @@ impl<'a> CodeExeServClient {
 			overall_msg.extend_from_slice(exe_and_input.code_bytes);
 		}
 		
-		println!("Sending code len {}", exe_and_input.code_bytes.len());
+		//println!("Sending code len {}", exe_and_input.code_bytes.len());
 		
 		{
 			let num_i_vals = (exe_and_input.i_vals.len() as u32).to_be_bytes();
@@ -59,7 +59,7 @@ impl<'a> CodeExeServClient {
 			}
 		}
 		
-		println!("Sending {} iVals", exe_and_input.i_vals.len());
+		//println!("Sending {} iVals", exe_and_input.i_vals.len());
 		
 		{
 			let num_f_vals = (exe_and_input.f_vals.len() as u32).to_be_bytes();
