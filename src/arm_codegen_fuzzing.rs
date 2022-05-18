@@ -9,6 +9,8 @@ use std::fmt::Write;
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
+use crate::compilation_config::GenCodeFuzzMode;
+
 use crate::arm_codegen_ctx::ARMSIMDCodegenCtx;
 use crate::arm_codegen_ctx::{generate_arm_codegen_ctx, generate_cpp_code_from_arm_codegen_ctx};
 
@@ -29,14 +31,15 @@ pub struct ARMCodegenFuzzerCodeMetadata {
 
 pub struct ARMCodegenFuzzerThreadInput {
 	pub thread_seed : u64,
-	pub type_to_intrinsics_map : HashMap<ARMSIMDType, Vec<ARMSIMDIntrinsic>>
+	pub type_to_intrinsics_map : HashMap<ARMSIMDType, Vec<ARMSIMDIntrinsic>>,
+	pub mode : GenCodeFuzzMode
 }
 
 pub struct ARMCodegenFuzzer {
 	type_to_intrinsics_map : HashMap<ARMSIMDType, Vec<ARMSIMDIntrinsic>>,
 	all_intrinsic_return_types : Vec<ARMSIMDType>,
 	outer_rng : Rand,
-	code_exe_serv : CodeExeServClient
+	code_exe_serv : Option<CodeExeServClient>
 }
 
 #[derive(Clone, Debug)]
@@ -234,11 +237,13 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 
 		const EXE_SERVER_ADDR_AND_PORT : &str = "192.168.86.153:6821";
 
+		let needs_exe_server = (input_data.mode == GenCodeFuzzMode::CrashAndDiff);
+
 		ARMCodegenFuzzer {
 			type_to_intrinsics_map: input_data.type_to_intrinsics_map,
 			all_intrinsic_return_types: all_intrinsic_return_types,
 			outer_rng: Rand::new(input_data.thread_seed),
-			code_exe_serv: CodeExeServClient::new(EXE_SERVER_ADDR_AND_PORT)
+			code_exe_serv: if needs_exe_server { Some(CodeExeServClient::new(EXE_SERVER_ADDR_AND_PORT)) } else { None }
 		}
 	}
 
@@ -285,7 +290,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 			return_type : encoded_return_type
 		};
 
-		let maybe_output = self.code_exe_serv.send_exe_and_input(&code_exe_and_input);
+		let maybe_output = self.code_exe_serv.as_ref().unwrap().send_exe_and_input(&code_exe_and_input);
 		match maybe_output {
 			Ok(output_vec) => {
 				

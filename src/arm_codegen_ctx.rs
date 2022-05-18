@@ -33,19 +33,21 @@ pub struct ARMSIMDCodegenCtx {
 	// For a given type, track all the node indices that produce that type
 	pub type_to_ref_idx : HashMap<ARMSIMDType, Vec<usize>>,
 	
+	reuse_node_idx_denom : u32,
+	reuse_node_idx_num : u32,
+	
 	// Some RNG state
 	rng : Rand
 }
 
-
-const REUSE_NODE_IDX_DENOM : u32 = 6;
-const REUSE_NODE_IDX_NUM : u32 = 1;
 
 impl ARMSIMDCodegenCtx {
 	pub fn new(seed : u64) -> ARMSIMDCodegenCtx {
 		ARMSIMDCodegenCtx {
 			intrinsics_sequence: Vec::new(),
 			type_to_ref_idx: HashMap::new(),
+			reuse_node_idx_denom: 6,
+			reuse_node_idx_num: 1,
 			rng: Rand::new(seed)
 		}
 	}
@@ -54,7 +56,7 @@ impl ARMSIMDCodegenCtx {
 		if let Some(ref_indices) = self.type_to_ref_idx.get(&ref_type) {
 			for ref_idx in ref_indices {
 				if *ref_idx > before_idx {
-					if (self.rng.rand() % REUSE_NODE_IDX_DENOM) < REUSE_NODE_IDX_NUM {
+					if (self.rng.rand() % self.reuse_node_idx_denom) < self.reuse_node_idx_num {
 						return *ref_idx;
 					}
 				}
@@ -232,6 +234,18 @@ pub fn generate_arm_codegen_ctx(ctx : &mut ARMSIMDCodegenCtx, intrinsics_by_type
 
 	let num_node_iterations : usize = 20 + (ctx.rng.rand_size() % 200);
 	let chance_for_zero_node : f32 = match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
+
+	// TODO: Meh, could be better placed
+	ctx.reuse_node_idx_denom = 6;
+	ctx.reuse_node_idx_num = match ctx.rng.rand() % 4 {
+		0 => 0,
+		1 => 1,
+		2 => 2,
+		3 => 6,
+		_ => panic!("bad decider")
+	};
+
+	//println!("re-use chances = {}/{}", ctx.reuse_node_idx_num, ctx.reuse_node_idx_denom);
 
 	for ii in 0..num_node_iterations {
 		if ii >= ctx.get_num_nodes() {

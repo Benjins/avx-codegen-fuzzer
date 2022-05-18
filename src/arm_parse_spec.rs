@@ -9,12 +9,12 @@ use std::collections::BTreeSet;
 
 
 // Floating point is for now too much of a headache to fuzz the way we do, unless we're doing crash-only
-const MITIGATION_AVOID_FLOATING_POINT : bool = true;
+//const MITIGATION_AVOID_FLOATING_POINT : bool = false; // only for crash+diff
 
 // I don't know if these are supported everywhere?
-const MITIGATION_AVOID_POLY128 : bool = true;
-const MITIGATION_AVOID_POLY64 : bool = true;
-const MITIGATION_AVOID_POLY32 : bool = true;
+//const MITIGATION_AVOID_POLY128 : bool = false; // only for crash+diff
+//const MITIGATION_AVOID_POLY64 : bool = false; // only for crash+diff
+//const MITIGATION_AVOID_POLY32 : bool = false; // only for crash+diff
 
 // Even if we allow floating point, float16 may not be supported
 const MITIGATION_AVOID_FP16 : bool = true;
@@ -24,9 +24,10 @@ const MITIGATION_AVOID_FP16 : bool = true;
 const MITIGATION_AVOID_REINTERPRET : bool = false;
 
 // I'd like to figure out if we can compile/run with these as well, but for now nix them
-const MITIGATION_AVOID_A64_ONLY : bool = true;
+//const MITIGATION_AVOID_A64_ONLY : bool = false; // only for crash+diff
 
-const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = true;
+// I think this was fixed in 4c3e51ecfa3337be2d091392d6174449aeb35aa3
+const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = false;
 
 
 pub fn ignore_type_name_if(type_name : &str) -> bool {
@@ -131,7 +132,7 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	return disallowed_intrinsics;
 }
 
-pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> {
+pub fn parse_arm_intrinsics_json(spec_contents : &str, mitigations : &BTreeSet<String>) -> Vec<ARMSIMDIntrinsic> {
 	let spec_json : serde_json::Value = serde_json::from_str(spec_contents).expect("Could not parse JSON");
 	
 	let disallowed_intrinsics = get_disallowed_intrinsics();
@@ -151,7 +152,7 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 			
 			let a64_only = a64_only;
 			
-			if MITIGATION_AVOID_A64_ONLY {
+			if mitigations.contains("AVOID_A64_ONLY") {
 				if a64_only {
 					continue;
 				}
@@ -210,27 +211,27 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str) -> Vec<ARMSIMDIntrinsic> 
 				}
 			}
 
-			if MITIGATION_AVOID_FLOATING_POINT {
+			if mitigations.contains("AVOID_FLOATING_POINT") {
 				if is_arm_simd_type_floating_point(ret_type) || intrinsic_args.iter().any(|&arg| is_arm_simd_type_floating_point(arg)) {
 					continue;
 				}
 			}
 			
-			if MITIGATION_AVOID_POLY128 {
+			if mitigations.contains("AVOID_POLY128") {
 				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly128)
 				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly128)) {
 					continue;
 				}
 			}
 			
-			if MITIGATION_AVOID_POLY64 {
+			if mitigations.contains("AVOID_POLY64") {
 				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly64)
 				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly64)) {
 					continue;
 				}
 			}
 			
-			if MITIGATION_AVOID_POLY32 {
+			if mitigations.contains("AVOID_POLY32") {
 				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly32)
 				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly32)) {
 					continue;

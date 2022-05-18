@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::cell::RefCell;
 
 pub struct CodeExeServClient {
-	socket : Option<RefCell<TcpStream>>
+	socket : RefCell<TcpStream>
 }
 
 
@@ -23,8 +23,7 @@ pub struct CodeExeAndInput<'a> {
 impl<'a> CodeExeServClient {
 
 	pub fn new(connect_addr : &str) -> Self {
-		//Self { socket: None }
-		Self { socket: Some(RefCell::new(TcpStream::connect(connect_addr).unwrap())) }
+		Self { socket: RefCell::new(TcpStream::connect(connect_addr).unwrap()) }
 	}
 
 	// return type:
@@ -80,7 +79,7 @@ impl<'a> CodeExeServClient {
 		let overall_msg_len = overall_msg.len() as u32;
 		let overall_msg_len_bytes = overall_msg_len.to_be_bytes();
 		
-		let mut socket = self.socket.as_ref().unwrap().borrow_mut();
+		let mut socket = self.socket.borrow_mut();
 		socket.write(&overall_msg_len_bytes)?;
 		socket.write(&overall_msg)?;
 		

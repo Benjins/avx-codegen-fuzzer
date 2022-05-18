@@ -2,6 +2,7 @@
 
 use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
+use std::collections::BTreeSet;
 //use std::time::{Duration, Instant};
 
 use crate::parse_exe::parse_obj_file;
@@ -136,7 +137,7 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 	return GenCodeResult::Success(generated_codes);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GenCodeFuzzMode {
 	CrashOnly,
 	CrashAndDiff,
@@ -158,8 +159,14 @@ fn parse_fuzz_mode(mode_str : &str) -> GenCodeFuzzMode {
 	}
 }
 
+pub struct CompilationConfig {
+	pub compilations : Vec<TestCompilation>,
+	pub fuzz_mode : GenCodeFuzzMode,
+	pub mitigations : BTreeSet<String>
+}
+
 // return struct at some point
-pub fn parse_compiler_config(config : &str) -> (Vec<TestCompilation>, GenCodeFuzzMode) {
+pub fn parse_compiler_config(config : &str) -> CompilationConfig {
 	let config_json : serde_json::Value = serde_json::from_str(config).expect("Could not parse JSON");
 	
 	let timeout = config_json["compilation_timeout_seconds"].as_i64().expect("could not parse compilation_timeout_seconds") as i32;
@@ -183,7 +190,18 @@ pub fn parse_compiler_config(config : &str) -> (Vec<TestCompilation>, GenCodeFuz
 		});
 	}
 	
-	return (test_compilations, fuzz_mode);
+	let mut mitigations = BTreeSet::<String>::new();
+	if let Some(mitigations_json) = config_json["mitigations"].as_array() {
+		for mitigation in mitigations_json {
+			mitigations.insert(mitigation.as_str().expect("mitigations must contain strings").to_string());
+		}
+	}
+	
+	return CompilationConfig {
+		compilations: test_compilations,
+		fuzz_mode: fuzz_mode,
+		mitigations: mitigations
+	};
 }
 
 

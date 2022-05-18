@@ -22,7 +22,7 @@ mod rand;
 
 mod compilation_config;
 use compilation_config::{test_generated_code_compilation, parse_compiler_config};
-use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode};
+use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode, CompilationConfig};
 
 mod x86_parse_spec;
 use x86_parse_spec::parse_intel_intrinsics_xml;
@@ -255,7 +255,9 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		type_to_intrinsics_map
 	};
 	
-	let (compilation_tests, fuzz_mode) = parse_compiler_config(&config_contents);
+	let compilation_config = parse_compiler_config(&config_contents);
+	let compilation_tests = compilation_config.compilations;
+	let fuzz_mode = compilation_config.fuzz_mode;
 
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 	print!("Launching fuzzer with {} threads\n", num_threads);
@@ -329,8 +331,6 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 	}
 	
 	let contents = contents.unwrap();
-	
-	let intrinsics_list = parse_arm_intrinsics_json(&contents);
 
 	let config_contents = std::fs::read_to_string(config_filename);
 	if config_contents.is_err() {
@@ -338,6 +338,12 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		return;
 	}
 	let config_contents = config_contents.unwrap();
+	
+	let compilation_config = parse_compiler_config(&config_contents);
+	let compilation_tests = compilation_config.compilations;
+	let fuzz_mode = compilation_config.fuzz_mode;
+	
+	let intrinsics_list = parse_arm_intrinsics_json(&contents, &compilation_config.mitigations);
 	
 	let type_to_intrinsics_map = {
 		let mut type_to_intrinsics_map = HashMap::<ARMSIMDType, Vec<ARMSIMDIntrinsic>>::new();
@@ -352,8 +358,6 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		type_to_intrinsics_map
 	};
 	
-	let (compilation_tests, fuzz_mode) = parse_compiler_config(&config_contents);
-	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = unsafe { _rdtsc() };
 	
@@ -364,7 +368,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		
 		let compilation_tests = compilation_tests.clone();
 		let type_to_intrinsics_map = type_to_intrinsics_map.clone();
-		let fuzz_mode = fuzz_mode.clone();
+		//let fuzz_mode = fuzz_mode.clone();
 		
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
@@ -373,7 +377,8 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 			
 			let thread_input = ARMCodegenFuzzerThreadInput {
 				thread_seed : initial_seed,
-				type_to_intrinsics_map : type_to_intrinsics_map
+				type_to_intrinsics_map : type_to_intrinsics_map,
+				mode: fuzz_mode
 			};
 			
 			fuzz_simd_codegen_loop::<ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues>(
