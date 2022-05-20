@@ -22,7 +22,7 @@ mod rand;
 
 mod compilation_config;
 use compilation_config::{test_generated_code_compilation, parse_compiler_config};
-use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode, CompilationConfig};
+use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode};
 
 mod x86_parse_spec;
 use x86_parse_spec::parse_intel_intrinsics_xml;
