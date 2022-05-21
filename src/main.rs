@@ -57,6 +57,9 @@ use arm_codegen_fuzzing::{ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMCode
 
 mod code_exe_server_conn;
 
+mod loop_codegen_fuzzing;
+use loop_codegen_fuzzing::{LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata, LoopFuzzerInputValues, LoopFuzzerOutputValues, LoopFuzzer};
+
 fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	let mut hasher = Sha256::new();
 	hasher.update(input);
@@ -103,7 +106,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 		input : ThreadInput, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode,
 		total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>, num_bytes_fuzzed : Arc<AtomicUsize>
 	)
-	where FuzzType : CodegenFuzzer<ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>, FuzzerOutput: Copy, CodegenCtx: Clone {
+	where FuzzType : CodegenFuzzer<ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>, FuzzerOutput: Clone, CodegenCtx: Clone {
 	
 	let mut fuzzer = FuzzType::new_fuzzer_state(input);
 	
@@ -155,8 +158,8 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 						let mut first_output : Option<FuzzerOutput> = None;
 						for compiled_out in compiled_outputs.iter(){
 							let output = fuzzer.execute(&compiled_out.code_page, &code_meta, &input);
-							if let Some(first_output) = first_output {
-								if !fuzzer.are_outputs_the_same(&first_output, &output) {
+							if let Some(ref first_output) = first_output {
+								if !fuzzer.are_outputs_the_same(first_output, &output) {
 									all_outputs_same = false;
 									break;
 								}
@@ -183,8 +186,8 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 								let mut first_output : Option<FuzzerOutput> = None;
 								for compiled_out in minim_compiled_outputs.iter(){
 									let output = fuzzer.execute(&compiled_out.code_page, &minim_code_meta, &bad_input);
-									if let Some(first_output) = first_output {
-										if !fuzzer.are_outputs_the_same(&first_output, &output) {
+									if let Some(ref first_output) = first_output {
+										if !fuzzer.are_outputs_the_same(first_output, &output) {
 											all_outputs_same = false;
 											break;
 										}
@@ -415,6 +418,68 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 	}
 }
 
+fn fuzz_loop_codegen(config_filename : &str, num_threads : u32) {
+	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
+	print!("Launching fuzzer with {} threads\n", num_threads);
+
+	let num_cases_state = Arc::new(AtomicUsize::new(0));
+	let num_bugs_found = Arc::new(AtomicUsize::new(0));
+	let num_bytes_fuzzed = Arc::new(AtomicUsize::new(0));
+
+	let config_contents = std::fs::read_to_string(config_filename);
+	if config_contents.is_err() {
+		print!("Could not open config file '{}'\n", config_filename);
+		return;
+	}
+	let config_contents = config_contents.unwrap();
+	
+	let compilation_config = parse_compiler_config(&config_contents);
+	let compilation_tests = compilation_config.compilations;
+	let fuzz_mode = compilation_config.fuzz_mode;
+	
+	let initial_time = unsafe { _rdtsc() };
+	
+	for thread_id in 0..num_threads {
+		let num_cases_state = num_cases_state.clone();
+		let num_bugs_found = num_bugs_found.clone();
+		let num_bytes_fuzzed = num_bytes_fuzzed.clone();
+		let compilation_tests = compilation_tests.clone();
+
+		// Some prime numbers beause they're better, or so I hear
+		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
+		
+		let thread_handle = std::thread::spawn(move || {
+			
+			let thread_input = LoopFuzzerThreadInput {
+				thread_seed : initial_seed
+			};
+			
+			fuzz_simd_codegen_loop::<LoopFuzzer, LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata, LoopFuzzerInputValues, LoopFuzzerOutputValues>(
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
+		});
+		thread_handles.push(thread_handle);
+	}
+	
+	print!("Done launching\n");
+
+	let start_time = Instant::now();
+	loop {
+		std::thread::sleep(Duration::from_secs(1));
+		let time_so_far = Instant::now().duration_since(start_time);
+		let seconds_so_far = time_so_far.as_secs_f32();
+		let num_cases_so_far = num_cases_state.load(Ordering::SeqCst);
+		let avg_cases_per_second = num_cases_so_far as f32 / seconds_so_far;
+		let num_bugs_so_far = num_bugs_found.load(Ordering::SeqCst);
+		let num_bytes_so_far = num_bytes_fuzzed.load(Ordering::SeqCst);
+		
+		const BYTES_PER_KB : f64 = 1024.0;
+		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
+
+		print!("LOOP | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
+			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
+	}
+}
+
 fn print_usage() {
 	print!("usage: [exe] [fuzz-x86|fuzz-arm] [config_filename] [--threads NUM_THREADS]\n");
 }
@@ -455,10 +520,15 @@ fn main() {
 		let num_threads = get_num_threads();
 		fuzz_x86_simd_codegen(&config_filename, num_threads);
 	}
-	if method == "fuzz-arm" {
+	else if method == "fuzz-arm" {
 		let config_filename = std::env::args().nth(2).expect("missing config?");
 		let num_threads = get_num_threads();
 		fuzz_arm_simd_codegen(&config_filename, num_threads);
+	}
+	else if method == "fuzz-loop" {
+		let config_filename = std::env::args().nth(2).expect("missing config?");
+		let num_threads = get_num_threads();
+		fuzz_loop_codegen(&config_filename, num_threads);
 	}
 	else {
 		print_usage();
