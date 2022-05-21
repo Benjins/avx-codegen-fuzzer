@@ -196,7 +196,7 @@ impl LoopCodegenCtx {
 		write!(&mut cpp_code, "extern \"C\" void do_stuff(const int* __restrict inputs, int* __restrict outputs, int count) {{\n").expect("");
 		
 		// TODO configure loop stride
-		write!(&mut cpp_code, "\tfor (int i = 0; i < count - 3; i+= 4) {{\n").expect("");
+		write!(&mut cpp_code, "\tfor (int i = 0; i < count - {}; i+= {}) {{\n", NUM_REGISTERS - 1, NUM_REGISTERS).expect("");
 		
 		for ii in 0..NUM_REGISTERS {
 			write!(&mut cpp_code, "\t\tunsigned int r{} = inputs[i + {}];\n", ii, ii).expect("");
