@@ -69,7 +69,7 @@ impl LoopCodegenValue {
 				write!(cpp_code, "r{}", reg).expect("");
 			}
 			Self::ConstantValue(imm_val) => {
-				write!(cpp_code, "{}", imm_val).expect("");
+				write!(cpp_code, "{}U", imm_val).expect("");
 			}
 		}
 		
@@ -81,6 +81,7 @@ impl LoopCodegenValue {
 
 #[derive(Clone, Copy, Debug)]
 enum LoopCodegenOp {
+	NoOp, // Used for minimization
 	Add,
 	Sub,
 	Mul,
@@ -93,6 +94,7 @@ enum LoopCodegenOp {
 
 fn get_op_symbol(op : &LoopCodegenOp) -> &'static str {
 	match op {
+		LoopCodegenOp::NoOp => panic!("NoOp should not have get_op_symbol called"),
 		LoopCodegenOp::Add => "+",
 		LoopCodegenOp::Sub => "-",
 		LoopCodegenOp::Mul => "*",
@@ -114,6 +116,10 @@ struct LoopCodegenNode {
 
 impl LoopCodegenNode {
 	pub fn write_to_code(&self, cpp_code: &mut String) {
+		if matches!(self.op, LoopCodegenOp::NoOp) {
+			return;
+		}
+		
 		write!(cpp_code, "r{} = ", self.dest_register).expect("");
 		
 		self.src1.write_to_code(cpp_code, false);
@@ -143,7 +149,7 @@ impl LoopCodegenCtx {
 	pub fn new(seed : u64) -> LoopCodegenCtx {
 		let mut rng = Rand::new(seed);
 
-		let num_nodes = rng.rand() % 10 + 5;
+		let num_nodes = rng.rand() % 100 + 50;
 		
 		let mut nodes = Vec::with_capacity(num_nodes as usize);
 		for _ in 0..num_nodes {
@@ -251,8 +257,44 @@ impl CodegenFuzzer<LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata
 	}
 
 	// uhh.....idk
-	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, _ctx: Self::CodegenCtx, _func: F) -> Option<Self::CodegenCtx> {
-		todo!()
+	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
+		let mut best_ctx = ctx.clone();
+		loop {
+			let mut made_progress = false;
+			for ii in 0..best_ctx.nodes.len() {
+				// If it's already a no-op, don't try to make it one again
+				if matches!(best_ctx.nodes[ii].op, LoopCodegenOp::NoOp) {
+					continue;
+				}
+
+				let old_node = best_ctx.nodes[ii].op.clone();
+				best_ctx.nodes[ii].op = LoopCodegenOp::NoOp;
+				
+				if func(self, &best_ctx) {
+					made_progress = true;
+				}
+				else {
+					best_ctx.nodes[ii].op = old_node;
+				}
+			}
+			
+			if made_progress {
+				let mut num_non_noops = 0;
+				for node in best_ctx.nodes.iter() {
+					if !matches!(node.op, LoopCodegenOp::NoOp) {
+						num_non_noops += 1;
+					}
+				}
+				
+				println!("Made progress in minimiing, now {}/{} nodes", num_non_noops, best_ctx.nodes.len());
+			}
+			else {
+				println!("Could not make further progress, done minimizing...");
+				break;
+			}
+		}
+		
+		return Some(best_ctx);
 	}
 
 	// Actually execute it: this is probably like local, but 
