@@ -162,7 +162,8 @@ fn parse_fuzz_mode(mode_str : &str) -> GenCodeFuzzMode {
 pub struct CompilationConfig {
 	pub compilations : Vec<TestCompilation>,
 	pub fuzz_mode : GenCodeFuzzMode,
-	pub mitigations : BTreeSet<String>
+	pub mitigations : BTreeSet<String>,
+	pub extra_config : serde_json::Value
 }
 
 // return struct at some point
@@ -196,11 +197,14 @@ pub fn parse_compiler_config(config : &str) -> CompilationConfig {
 			mitigations.insert(mitigation.as_str().expect("mitigations must contain strings").to_string());
 		}
 	}
-	
+
+	let extra_config = config_json["extra_config"].clone();
+
 	return CompilationConfig {
 		compilations: test_compilations,
 		fuzz_mode: fuzz_mode,
-		mitigations: mitigations
+		mitigations: mitigations,
+		extra_config: extra_config
 	};
 }
 

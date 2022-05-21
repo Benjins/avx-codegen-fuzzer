@@ -358,6 +358,13 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		type_to_intrinsics_map
 	};
 	
+	let mut exe_server_connect_addr : String = "".to_string();
+	if let Some(extra_config) = compilation_config.extra_config.as_object() {
+		if let Some(connect_addr) = extra_config["exe_server"].as_str() {
+			exe_server_connect_addr = connect_addr.to_string();
+		}
+	}
+	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = unsafe { _rdtsc() };
 	
@@ -368,7 +375,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		
 		let compilation_tests = compilation_tests.clone();
 		let type_to_intrinsics_map = type_to_intrinsics_map.clone();
-		//let fuzz_mode = fuzz_mode.clone();
+		let exe_server_connect_addr = exe_server_connect_addr.clone();
 		
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
@@ -378,7 +385,8 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 			let thread_input = ARMCodegenFuzzerThreadInput {
 				thread_seed : initial_seed,
 				type_to_intrinsics_map : type_to_intrinsics_map,
-				mode: fuzz_mode
+				mode: fuzz_mode,
+				connect_addr: exe_server_connect_addr
 			};
 			
 			fuzz_simd_codegen_loop::<ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues>(

@@ -32,7 +32,8 @@ pub struct ARMCodegenFuzzerCodeMetadata {
 pub struct ARMCodegenFuzzerThreadInput {
 	pub thread_seed : u64,
 	pub type_to_intrinsics_map : HashMap<ARMSIMDType, Vec<ARMSIMDIntrinsic>>,
-	pub mode : GenCodeFuzzMode
+	pub mode : GenCodeFuzzMode,
+	pub connect_addr : String
 }
 
 pub struct ARMCodegenFuzzer {
@@ -235,15 +236,13 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 			all_intrinsic_return_types.push(*ret_type);
 		}
 
-		const EXE_SERVER_ADDR_AND_PORT : &str = "192.168.86.153:6821";
-
 		let needs_exe_server = (input_data.mode == GenCodeFuzzMode::CrashAndDiff);
 
 		ARMCodegenFuzzer {
 			type_to_intrinsics_map: input_data.type_to_intrinsics_map,
 			all_intrinsic_return_types: all_intrinsic_return_types,
 			outer_rng: Rand::new(input_data.thread_seed),
-			code_exe_serv: if needs_exe_server { Some(CodeExeServClient::new(EXE_SERVER_ADDR_AND_PORT)) } else { None }
+			code_exe_serv: if needs_exe_server { Some(CodeExeServClient::new(&input_data.connect_addr)) } else { None }
 		}
 	}
 
