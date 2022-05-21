@@ -74,7 +74,7 @@ impl LoopCodegenValue {
 		}
 		
 		if do_and {
-			cpp_code.push_str(" & 31)");
+			cpp_code.push_str(" & 0x0f)");
 		}
 	}
 }
@@ -159,12 +159,16 @@ impl LoopCodegenCtx {
 		return LoopCodegenCtx { nodes: nodes };
 	}
 
+	fn get_random_register(num_registers : usize, rng : &mut Rand) -> LoopCodegenValue {
+		LoopCodegenValue::Register(rng.rand_size() % num_registers)
+	}
+
 	fn get_random_value(num_registers : usize, rng : &mut Rand) -> LoopCodegenValue {
 		if (rng.rand() % IMMEDIATE_VALUE_CHANCE_DENOM) < IMMEDIATE_VALUE_CHANCE_NUM {
 			LoopCodegenValue::ConstantValue(rng.rand())
 		}
 		else {
-			LoopCodegenValue::Register(rng.rand_size() % num_registers)
+			Self::get_random_register(num_registers, rng)
 		}
 	}
 
@@ -172,7 +176,7 @@ impl LoopCodegenCtx {
 		let op_decider = rng.rand() % 8;
 		let op = match op_decider {
 			0 => LoopCodegenOp::Add,
-			1 => LoopCodegenOp::Sub,
+			1 => LoopCodegenOp::Add, // TODO: Sub maybe seems to create too many zero's
 			2 => LoopCodegenOp::Mul,
 			3 => LoopCodegenOp::BitAnd,
 			4 => LoopCodegenOp::BitOr,
@@ -185,7 +189,7 @@ impl LoopCodegenCtx {
 		return LoopCodegenNode {
 			op: op,
 			dest_register: rng.rand_size() % num_registers,
-			src1: Self::get_random_value(num_registers, rng),
+			src1: Self::get_random_register(num_registers, rng),
 			src2: Self::get_random_value(num_registers, rng)
 		};
 	}
