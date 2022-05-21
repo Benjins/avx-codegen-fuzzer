@@ -308,13 +308,16 @@ fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, 
 	let size_of_type = arm_simd_type_size_bytes(entry_type);
 	match entry_type {
 		ARMSIMDType::Primitive(base_type) => {
+			// TODO: float vs double?
 			if is_arm_base_type_floating_point(base_type) {
 				write!(cpp_code, "fVals[{}]", num_f_vals).expect("");
 				num_f_vals += (size_of_type + 3) / 4;
 			}
 			else {
 				write!(cpp_code, "({})iVals[{}]", arm_base_type_to_cpp_type_name(base_type), num_f_vals).expect("");
+				let old_num_i_vals = num_i_vals;
 				num_i_vals += (size_of_type + 3) / 4;
+				assert!(num_i_vals > old_num_i_vals);
 			}
 		}
 		ARMSIMDType::ConstantIntImmediate(_, _) => { panic!("cannot call arm_generate_cpp_entry_code_for_type on constant immediate"); }
@@ -333,9 +336,11 @@ fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, 
 					num_d_vals += size_of_type / 8;
 				}
 				_ => {
-					num_i_vals = align_usize(num_i_vals, SIMD_ALIGNMENT_BYTES);
+					num_i_vals = align_usize(num_i_vals, (SIMD_ALIGNMENT_BYTES / 4));
 					write!(cpp_code, "{}((const {}*)&iVals[{}])", ld_func, base_type_name, num_i_vals).expect("");
+					let old_num_i_vals = num_i_vals;
 					num_i_vals += size_of_type / 4;
+					assert!(num_i_vals > old_num_i_vals);
 				}
 			}
 		}
@@ -343,7 +348,6 @@ fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, 
 
 	cpp_code.push_str(";\n");
 
-	// TODO: actually increase these for input sizing on metadata
 	return (num_i_vals, num_f_vals, num_d_vals);
 }
 
