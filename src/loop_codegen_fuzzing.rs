@@ -120,7 +120,7 @@ impl LoopCodegenNode {
 			return;
 		}
 		
-		write!(cpp_code, "r{} = ", self.dest_register).expect("");
+		write!(cpp_code, "\t\tr{} = ", self.dest_register).expect("");
 		
 		self.src1.write_to_code(cpp_code, false);
 		
@@ -204,7 +204,6 @@ impl LoopCodegenCtx {
 
 		// insert operations here
 		for node in self.nodes.iter() {
-			cpp_code.push_str("\t\t");
 			node.write_to_code(&mut cpp_code);
 		}
 
