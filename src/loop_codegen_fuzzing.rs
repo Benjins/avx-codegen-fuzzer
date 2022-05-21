@@ -52,7 +52,7 @@ pub struct LoopFuzzerOutputValues {
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum LoopCodegenValue {
 	Register(usize),
 	ConstantValue(u32)
@@ -79,7 +79,7 @@ impl LoopCodegenValue {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum LoopCodegenOp {
 	Add,
 	Sub,
@@ -104,7 +104,7 @@ fn get_op_symbol(op : &LoopCodegenOp) -> &'static str {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct LoopCodegenNode {
 	op : LoopCodegenOp,
 	dest_register : usize,
@@ -118,7 +118,9 @@ impl LoopCodegenNode {
 		
 		self.src1.write_to_code(cpp_code, false);
 		
-		write!(cpp_code, " {} ", get_op_symbol(&self.op)).expect("");
+		let op_symbol = get_op_symbol(&self.op);
+		//println!("{:?} -> {}", self.op, op_symbol);
+		write!(cpp_code, " {} ", op_symbol).expect("");
 		
 		let do_and = match self.op { LoopCodegenOp::ShiftLeft | LoopCodegenOp::ShiftRight => true, _ => false };
 		self.src2.write_to_code(cpp_code, do_and);
@@ -226,8 +228,8 @@ impl CodegenFuzzer<LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata
 
 	// Turn the AST/context into actual CPP code, along with any metadata (i.e. number of values to pass for SIMD's iVals pointer, return value, etc.)
 	fn generate_cpp_code(&self, ctx : &Self::CodegenCtx) -> (String, Self::CodeMeta) {
-		let cpp_code = ctx.generate_cpp_code();
 		//println!("---------CODE--------");
+		let cpp_code = ctx.generate_cpp_code();
 		//println!("{}", cpp_code);
 		//println!("-----------------");
 
@@ -235,26 +237,39 @@ impl CodegenFuzzer<LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata
 		(cpp_code, LoopFuzzerCodeMetadata { loop_inner_stride: 4 })
 	}
 
-	fn generate_random_input(&self, code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
-		todo!()
+	fn generate_random_input(&self, _code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
+		// Meh, kinda wish we didn't need to just make a new one since it requires mutability
+		let mut rng = Rand::default();
+
+		let num_values = 32 + rng.rand() % 16;
+		let mut values = Vec::with_capacity(num_values as usize);
+		for _ in 0..num_values {
+			values.push(rng.rand());
+		}
+
+		return LoopFuzzerInputValues {vals: values };
 	}
 
 	// uhh.....idk
-	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
+	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, _ctx: Self::CodegenCtx, _func: F) -> Option<Self::CodegenCtx> {
 		todo!()
 	}
 
 	// Actually execute it: this is probably like local, but 
-	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
-		todo!()
+	fn execute(&self, exec_page : &ExecPage, _code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
+		let mut output_vals = vec![0u32 ; input.vals.len()];
+		
+		exec_page.execute_with_u32_io(&input.vals[..], &mut output_vals[..]);
+		
+		return LoopFuzzerOutputValues { vals: output_vals };
 	}
 
 	fn are_outputs_the_same(&self, o1 : &Self::FuzzerOutput, o2 : &Self::FuzzerOutput) -> bool {
-		todo!()
+		o1.vals == o2.vals
 	}
 	
 	fn save_input_to_string(&self, input : &Self::FuzzerInput) -> String {
-		todo!()
+		input.write_to_str()
 	}
 	
 	fn num_inputs_per_codegen(&self) -> u32 {

@@ -27,7 +27,7 @@ fn align_vec(vec : &mut Vec<u8>, alignment : usize) {
 // TODO: Do the same for Linux/etc.
 
 #[cfg(target_os = "windows")]
-const MEMSET_x86_BYTES : [u8 ; 28] = [
+const MEMSET_X86_BYTES : [u8 ; 28] = [
   0x48, 0x89, 0xc8,                    // mov    %rcx,%rax
   0x4d, 0x85, 0xc0,                    // test   %r8,%r8
   0x74, 0x13,                          // je     1b <?my_memset@@YAPEAXPEAXH_K@Z+0x1b>
@@ -83,7 +83,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	for symbol in obj_file.symbols() {
 		if symbol.name().expect("") == "memset" {
 			memset_file_offset = Some(bytes_loaded_into_memory.len());
-			bytes_loaded_into_memory.extend_from_slice(&MEMSET_x86_BYTES[..]);
+			bytes_loaded_into_memory.extend_from_slice(&MEMSET_X86_BYTES[..]);
 		}
 	}
 

@@ -96,6 +96,15 @@ impl ExecPage {
 		return ret;
 	}
 	
+	pub fn execute_with_u32_io(&self, input: &[u32], output: &mut [u32]) {
+		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
+		let func: unsafe extern "C" fn(*const u32, *mut u32) = unsafe { std::mem::transmute(func_ptr) };
+
+		unsafe {
+			func(input.as_ptr(), output.as_mut_ptr());
+		}
+	}
+	
 	pub fn get_bytes(&self) -> &[u8] {
 		return &self.page[..self.code_size];
 	}
