@@ -107,17 +107,72 @@ fn get_op_symbol(op : &LoopCodegenOp) -> &'static str {
 }
 
 #[derive(Clone, Debug)]
+enum LoopCodegenCondOp {
+	Less,
+	Greater,
+	Eq,
+	NotEq,
+	LEq,
+	GEq
+}
+
+fn cond_op_to_code(cond_op : &LoopCodegenCondOp) -> &'static str {
+	match cond_op {
+		LoopCodegenCondOp::Less => "<",
+		LoopCodegenCondOp::Greater => ">",
+		LoopCodegenCondOp::Eq => "==",
+		LoopCodegenCondOp::NotEq => "!=",
+		LoopCodegenCondOp::LEq => "<=",
+		LoopCodegenCondOp::GEq => ">="
+	}
+}
+
+fn get_rand_cond_op(rng: &mut Rand) -> LoopCodegenCondOp {
+	match rng.rand() % 6 {
+		0 => LoopCodegenCondOp::Less,
+		1 => LoopCodegenCondOp::Greater,
+		2 => LoopCodegenCondOp::Eq,
+		3 => LoopCodegenCondOp::NotEq,
+		4 => LoopCodegenCondOp::LEq,
+		5 => LoopCodegenCondOp::GEq,
+		_ => panic!("bad decider")
+	}
+}
+
+#[derive(Clone, Debug)]
+struct LoopCodegenCond {
+	pub op : LoopCodegenCondOp,
+	pub lhs_reg : usize,
+	pub rhs : LoopCodegenValue
+}
+
+impl LoopCodegenCond {
+	pub fn write_to_code(&self, cpp_code: &mut String) {
+		write!(cpp_code, "r{}", self.lhs_reg).expect("");
+		write!(cpp_code, " {} ", cond_op_to_code(&self.op)).expect("");
+		self.rhs.write_to_code(cpp_code, false);
+	}
+}
+
+#[derive(Clone, Debug)]
 struct LoopCodegenNode {
 	op : LoopCodegenOp,
 	dest_register : usize,
 	src1 : LoopCodegenValue,
-	src2 : LoopCodegenValue
+	src2 : LoopCodegenValue,
+	cond : Option<LoopCodegenCond>
 }
 
 impl LoopCodegenNode {
 	pub fn write_to_code(&self, cpp_code: &mut String) {
 		if matches!(self.op, LoopCodegenOp::NoOp) {
 			return;
+		}
+		
+		if let Some(cond) = &self.cond {
+			cpp_code.push_str("\t\tif (");
+			cond.write_to_code(cpp_code);
+			cpp_code.push_str(") {\n\t");
 		}
 		
 		write!(cpp_code, "\t\tr{} = ", self.dest_register).expect("");
@@ -132,6 +187,10 @@ impl LoopCodegenNode {
 		self.src2.write_to_code(cpp_code, do_and);
 		
 		cpp_code.push_str(";\n");
+		
+		if let Some(_) = self.cond {
+			cpp_code.push_str("\t\t}\n");
+		}
 	}
 }
 
@@ -142,6 +201,9 @@ pub struct LoopCodegenCtx {
 
 const IMMEDIATE_VALUE_CHANCE_NUM : u32 = 1;
 const IMMEDIATE_VALUE_CHANCE_DENOM : u32 = 4;
+
+const COND_CHANCE_NUM : u32 = 1;
+const COND_CHANCE_DENOM : u32 = 5;
 
 const NUM_REGISTERS : usize = 4;
 
@@ -165,7 +227,16 @@ impl LoopCodegenCtx {
 
 	fn get_random_value(num_registers : usize, rng : &mut Rand) -> LoopCodegenValue {
 		if (rng.rand() % IMMEDIATE_VALUE_CHANCE_DENOM) < IMMEDIATE_VALUE_CHANCE_NUM {
-			LoopCodegenValue::ConstantValue(rng.rand())
+			let random_val = match rng.rand() % 10 {
+				0 => 0,
+				1|2 => 1,
+				3 => 2,
+				4 => 0xFFFFFFFFu32,
+				5 => 17,
+				6..=9 => rng.rand(),
+				_ => panic!("bad decider")
+			};
+			LoopCodegenValue::ConstantValue(random_val)
 		}
 		else {
 			Self::get_random_register(num_registers, rng)
@@ -186,11 +257,23 @@ impl LoopCodegenCtx {
 			_ => panic!("bad decider")
 		};
 		
+		let cond = if (rng.rand() % COND_CHANCE_DENOM) < COND_CHANCE_NUM {
+			Some(LoopCodegenCond {
+				op : get_rand_cond_op(rng),
+				lhs_reg : rng.rand_size() % num_registers,
+				rhs : Self::get_random_value(num_registers, rng)
+			})
+		}
+		else {
+			None
+		};
+		
 		return LoopCodegenNode {
 			op: op,
 			dest_register: rng.rand_size() % num_registers,
 			src1: Self::get_random_register(num_registers, rng),
-			src2: Self::get_random_value(num_registers, rng)
+			src2: Self::get_random_value(num_registers, rng),
+			cond: cond
 		};
 	}
 	
@@ -253,7 +336,14 @@ impl CodegenFuzzer<LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata
 		let num_values = 32 + rng.rand() % 16;
 		let mut values = Vec::with_capacity(num_values as usize);
 		for _ in 0..num_values {
-			values.push(rng.rand());
+			let val = match rng.rand() % 4 {
+				0 => 0,
+				1 => 1,
+				2 => 0xFFFFFFFFu32,
+				3 => rng.rand(),
+				_ => panic!("bad decider")
+			};
+			values.push(val);
 		}
 
 		return LoopFuzzerInputValues {vals: values };
