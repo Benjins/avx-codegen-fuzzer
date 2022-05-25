@@ -54,6 +54,7 @@ pub struct LoopFuzzerOutputValues {
 
 #[derive(Clone, Copy, Debug)]
 enum LoopCodegenValue {
+	Input(usize),
 	Register(usize),
 	ConstantValue(u32)
 }
@@ -65,6 +66,9 @@ impl LoopCodegenValue {
 		}
 		
 		match self {
+			Self::Input(input) => {
+				write!(cpp_code, "in_{}", input).expect("");
+			}
 			Self::Register(reg) => {
 				write!(cpp_code, "r{}", reg).expect("");
 			}
@@ -202,20 +206,24 @@ pub struct LoopCodegenCtx {
 const IMMEDIATE_VALUE_CHANCE_NUM : u32 = 1;
 const IMMEDIATE_VALUE_CHANCE_DENOM : u32 = 4;
 
+const INPUT_VALUE_CHANCE_NUM : u32 = 1;
+const INPUT_VALUE_CHANCE_DENOM : u32 = 20;
+
 const COND_CHANCE_NUM : u32 = 1;
 const COND_CHANCE_DENOM : u32 = 5;
 
-const NUM_REGISTERS : usize = 4;
+const NUM_REGISTERS : usize = 50;
+const NUM_INPUTS : usize = 4;
 
 impl LoopCodegenCtx {
 	pub fn new(seed : u64) -> LoopCodegenCtx {
 		let mut rng = Rand::new(seed);
 
-		let num_nodes = rng.rand() % 100 + 50;
+		let num_nodes = rng.rand() % 250 + 250;
 		
 		let mut nodes = Vec::with_capacity(num_nodes as usize);
 		for _ in 0..num_nodes {
-			nodes.push(Self::get_random_node(NUM_REGISTERS, &mut rng));
+			nodes.push(Self::get_random_node(NUM_REGISTERS, NUM_INPUTS, &mut rng));
 		}
 
 		return LoopCodegenCtx { nodes: nodes };
@@ -224,8 +232,12 @@ impl LoopCodegenCtx {
 	fn get_random_register(num_registers : usize, rng : &mut Rand) -> LoopCodegenValue {
 		LoopCodegenValue::Register(rng.rand_size() % num_registers)
 	}
+	
+	fn get_random_input(num_inputs : usize, rng : &mut Rand) -> LoopCodegenValue {
+		LoopCodegenValue::Input(rng.rand_size() % num_inputs)
+	}
 
-	fn get_random_value(num_registers : usize, rng : &mut Rand) -> LoopCodegenValue {
+	fn get_random_value(num_registers : usize, num_inputs : usize, rng : &mut Rand) -> LoopCodegenValue {
 		if (rng.rand() % IMMEDIATE_VALUE_CHANCE_DENOM) < IMMEDIATE_VALUE_CHANCE_NUM {
 			let random_val = match rng.rand() % 10 {
 				0 => 0,
@@ -239,11 +251,16 @@ impl LoopCodegenCtx {
 			LoopCodegenValue::ConstantValue(random_val)
 		}
 		else {
-			Self::get_random_register(num_registers, rng)
+			if (rng.rand() % IMMEDIATE_VALUE_CHANCE_DENOM) < IMMEDIATE_VALUE_CHANCE_NUM {
+				Self::get_random_input(num_inputs, rng)
+			}
+			else {
+				Self::get_random_register(num_registers, rng)
+			}
 		}
 	}
 
-	fn get_random_node(num_registers : usize, rng : &mut Rand) -> LoopCodegenNode {
+	fn get_random_node(num_registers : usize, num_inputs : usize, rng : &mut Rand) -> LoopCodegenNode {
 		let op_decider = rng.rand() % 8;
 		let op = match op_decider {
 			0 => LoopCodegenOp::Add,
@@ -261,7 +278,7 @@ impl LoopCodegenCtx {
 			Some(LoopCodegenCond {
 				op : get_rand_cond_op(rng),
 				lhs_reg : rng.rand_size() % num_registers,
-				rhs : Self::get_random_value(num_registers, rng)
+				rhs : Self::get_random_value(num_registers, num_inputs, rng)
 			})
 		}
 		else {
@@ -272,7 +289,7 @@ impl LoopCodegenCtx {
 			op: op,
 			dest_register: rng.rand_size() % num_registers,
 			src1: Self::get_random_register(num_registers, rng),
-			src2: Self::get_random_value(num_registers, rng),
+			src2: Self::get_random_value(num_registers, num_inputs, rng),
 			cond: cond
 		};
 	}
@@ -285,8 +302,12 @@ impl LoopCodegenCtx {
 		// TODO configure loop stride
 		write!(&mut cpp_code, "\tfor (int i = 0; i < count - {}; i+= {}) {{\n", NUM_REGISTERS - 1, NUM_REGISTERS).expect("");
 		
+		for ii in 0..NUM_INPUTS {
+			write!(&mut cpp_code, "\t\tunsigned int in_{} = inputs[i + {}];\n", ii, ii).expect("");
+		}
+
 		for ii in 0..NUM_REGISTERS {
-			write!(&mut cpp_code, "\t\tunsigned int r{} = inputs[i + {}];\n", ii, ii).expect("");
+			write!(&mut cpp_code, "\t\tunsigned int r{} = in_{};\n", ii, ii % NUM_INPUTS).expect("");
 		}
 
 		// insert operations here
@@ -295,7 +316,7 @@ impl LoopCodegenCtx {
 		}
 
 		for ii in 0..NUM_REGISTERS {
-			write!(&mut cpp_code, "\t\toutputs[i + {}] = r{};\n", ii, ii).expect("");
+			write!(&mut cpp_code, "\t\toutputs[i + {}] += r{};\n", ii % NUM_INPUTS, ii).expect("");
 		}
 
 		write!(&mut cpp_code, "\t}}\n").expect("");
