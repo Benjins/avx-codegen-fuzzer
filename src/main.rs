@@ -273,7 +273,17 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 	let initial_time = unsafe { _rdtsc() };
 	
 	for thread_id in 0..num_threads {
-		let compilation_tests = compilation_tests.clone();
+		let mut compilation_tests = compilation_tests.clone();
+		
+		for compilation_test in compilation_tests.iter_mut() {
+			if compilation_test.use_tmp_file {
+				let tmp_filename = format!("tmp/x86_tmp_thr{}.o", thread_id);
+				for arg in compilation_test.compiler_args.iter_mut() {
+					*arg = arg.replace("^TMP_FILENAME^", &tmp_filename);
+				}
+				compilation_test.tmp_file_name = Some(tmp_filename);
+			}
+		}
 
 		let own_type_to_intrinsics_map = type_to_intrinsics_map.clone();
 		let fuzz_mode = fuzz_mode.clone();

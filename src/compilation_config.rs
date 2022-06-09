@@ -12,7 +12,9 @@ use crate::exec_mem::ExecPage;
 pub struct TestCompilation {
 	pub compiler_exe : String,
 	pub compiler_args : Vec<String>,
-	pub timeout_seconds : i32
+	pub timeout_seconds : i32,
+	pub tmp_file_name : Option<String>,
+	pub use_tmp_file : bool
 }
 
 //#[derive(Clone)]
@@ -121,14 +123,20 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 
 		match compile_result {
 			ProcessResult::Error(err_code, stdout, stderr) => {
+				println!("COMPILER ERR: {}", stderr);
 				return GenCodeResult::CompilerFailure(err_code, stdout, stderr);
 			}
 			ProcessResult::Timeout => {
 				return GenCodeResult::CompilerTimeout;
 			}
 			ProcessResult::Success(proc_output) => {
-				let code_page = parse_obj_file(&proc_output, "do_stuff").unwrap();
-				//println!("{:?}", code_page);
+				let code_page = if compile.use_tmp_file {
+					let compiled_out = std::fs::read(compile.tmp_file_name.as_ref().unwrap()).unwrap();
+					parse_obj_file(&compiled_out, "do_stuff").unwrap()
+				}
+				else {
+					parse_obj_file(&proc_output, "do_stuff").unwrap()
+				};
 				generated_codes.push(CompiledCodeOutput { code_page: code_page });
 			}
 		}
@@ -184,10 +192,14 @@ pub fn parse_compiler_config(config : &str) -> CompilationConfig {
 			compiler_args.push(compiler_arg.as_str().expect("compiler_args must contain strings").to_string());
 		}
 		
+		let use_tmp_file = compilation["use_temp_file"].as_bool().unwrap_or(false);
+		
 		test_compilations.push(TestCompilation {
 			compiler_exe : compiler_exe,
 			compiler_args :compiler_args,
-			timeout_seconds : timeout
+			timeout_seconds : timeout,
+			tmp_file_name: None, // will be filled in later...yeah could be better
+			use_tmp_file: use_tmp_file
 		});
 	}
 	
