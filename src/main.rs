@@ -67,7 +67,7 @@ fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	hex::encode(digest)
 }
 
-fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeResult) {
+fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeResult, metadata : &str) {
 	match result {
 		GenCodeResult::CompilerTimeout => {
 			let min_hex_hash_full = get_hex_hash_of_bytes(min_code.as_bytes());
@@ -93,10 +93,12 @@ fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeRes
 			let orig_code_filename = format!("fuzz_issues/runtime_diffs/{}_orig.cpp", min_hex_hash);
 			let min_code_filename = format!("fuzz_issues/runtime_diffs/{}_min.cpp", min_hex_hash);
 			let input_filename = format!("fuzz_issues/runtime_diffs/{}_input.input", min_hex_hash);
+			let min_meta_filename = format!("fuzz_issues/runtime_diffs/{}_min_meta.meta", min_hex_hash);
 			
 			std::fs::write(orig_code_filename, orig_code).expect("couldn't write to file?");
 			std::fs::write(min_code_filename, min_code).expect("couldn't write to file?");
 			std::fs::write(input_filename, input).expect("couldn't write to file?");
+			std::fs::write(min_meta_filename, metadata).expect("couldn't write to file?");
 		}
 		_ => panic!("uuhhhh....implement this")
 	}
@@ -138,12 +140,14 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 				};
 				
 				if let Some(min_ctx) = fuzzer.try_minimize(codegen_ctx, minim_checker) {
-					let (min_cpp_code,_) = fuzzer.generate_cpp_code(&min_ctx);
-					save_out_failure_info(&cpp_code, &min_cpp_code, &res);
+					let (min_cpp_code,min_code_meta) = fuzzer.generate_cpp_code(&min_ctx);
+					let min_code_meta = fuzzer.save_meta_to_string(&min_code_meta);
+					save_out_failure_info(&cpp_code, &min_cpp_code, &res, &min_code_meta);
 				}
 				else {
 					println!("Could not minimize for whatever reason");
-					save_out_failure_info(&cpp_code, &cpp_code, &res);
+					let code_meta = fuzzer.save_meta_to_string(&code_meta);
+					save_out_failure_info(&cpp_code, &cpp_code, &res, &code_meta);
 				}
 				
 				total_bugs_found.fetch_add(1, Ordering::SeqCst);
@@ -154,6 +158,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 					for _ in 0..num_inputs_per_codegen {
 						let input = fuzzer.generate_random_input(&code_meta);
 
+						// TODO: Code dup
 						let mut all_outputs_same = true;
 						let mut first_output : Option<FuzzerOutput> = None;
 						for compiled_out in compiled_outputs.iter(){
@@ -206,11 +211,11 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 						let input_str = fuzzer.save_input_to_string(&bad_input);
 						if let Some(min_ctx) = fuzzer.try_minimize(codegen_ctx, minim_checker) {
 							let (min_cpp_code,_) = fuzzer.generate_cpp_code(&min_ctx);
-							save_out_failure_info(&cpp_code, &min_cpp_code, &GenCodeResult::RuntimeDiff(input_str));
+							save_out_failure_info(&cpp_code, &min_cpp_code, &GenCodeResult::RuntimeDiff(input_str), ""); // TODO
 						}
 						else {
 							println!("Could not minimize for whatever reason");
-							save_out_failure_info(&cpp_code, &cpp_code, &GenCodeResult::RuntimeDiff(input_str));
+							save_out_failure_info(&cpp_code, &cpp_code, &GenCodeResult::RuntimeDiff(input_str), ""); // TODO
 						}
 						
 						total_bugs_found.fetch_add(1, Ordering::SeqCst);
@@ -324,6 +329,76 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 
 		print!("X86 | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
 			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
+	}
+}
+
+fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_filename : &str, input_filename : &str) {
+	println!("Reproing ARM simd on file {}", repro_filename);
+	
+	let config_contents = std::fs::read_to_string(config_filename);
+	if config_contents.is_err() {
+		print!("Could not open config file '{}'\n", config_filename);
+		return;
+	}
+	let config_contents = config_contents.unwrap();
+	
+	let repro_code = std::fs::read_to_string(repro_filename).expect("could not read repro code file");
+	let serial_meta = std::fs::read_to_string(meta_filename).expect("could not read code meta file");
+	let input_txt = std::fs::read_to_string(input_filename).expect("could not read code meta file");
+
+	let compilation_config = parse_compiler_config(&config_contents);
+	let compilation_tests = compilation_config.compilations;
+	let fuzz_mode = compilation_config.fuzz_mode;
+
+	let mut exe_server_connect_addr : String = "".to_string();
+	if let Some(extra_config) = compilation_config.extra_config.as_object() {
+		if let Some(connect_addr) = extra_config["exe_server"].as_str() {
+			exe_server_connect_addr = connect_addr.to_string();
+		}
+	}
+
+	let repro_input = ARMCodegenFuzzerThreadInput {
+		thread_seed : 0,
+		type_to_intrinsics_map : HashMap::<ARMSIMDType, Vec<ARMSIMDIntrinsic>>::new(),
+		mode: fuzz_mode,
+		connect_addr: exe_server_connect_addr
+	};
+	
+	let mut fuzzer = ARMCodegenFuzzer::new_fuzzer_state(repro_input);
+	
+	let res = test_generated_code_compilation(&repro_code, &compilation_tests);
+
+	match res {
+		GenCodeResult::Success(ref compiled_outputs) => {
+			let code_meta = fuzzer.read_meta_from_string(&serial_meta);
+			let input = fuzzer.read_input_from_string(&input_txt);
+
+			println!("input len is {}", input.i_vals.len());
+
+			let mut all_outputs_same = true;
+			let mut first_output : Option<ARMSIMDOutputValues> = None;
+			for compiled_out in compiled_outputs.iter(){
+				let output = fuzzer.execute(&compiled_out.code_page, &code_meta, &input);
+				if let Some(ref first_output) = first_output {
+					if !fuzzer.are_outputs_the_same(first_output, &output) {
+						println!("output1 = {:?}", first_output);
+						println!("output2 = {:?}", output);
+						all_outputs_same = false;
+						break;
+					}
+				}
+				else {
+					first_output = Some(output);
+				}
+			}
+			
+			if !all_outputs_same {
+				println!("Succeeded in repro'ing the issue...different results on outputs");
+			}
+		}
+		_ => {
+			panic!("did not succeed in compiling repro case...is that expected?");
+		}
 	}
 }
 
@@ -534,6 +609,13 @@ fn main() {
 		let config_filename = std::env::args().nth(2).expect("missing config?");
 		let num_threads = get_num_threads();
 		fuzz_arm_simd_codegen(&config_filename, num_threads);
+	}
+	else if method == "repro-arm" {
+		let config_filename = std::env::args().nth(2).expect("missing config?");
+		let repro_filename = std::env::args().nth(3).expect("missing repro filename?");
+		let meta_filename = std::env::args().nth(4).expect("missing meta filename?");
+		let input_filename = std::env::args().nth(5).expect("missing meta filename?");
+		repro_arm_simd_codegen(&config_filename, &repro_filename, &meta_filename, &input_filename);
 	}
 	else if method == "fuzz-loop" {
 		let config_filename = std::env::args().nth(2).expect("missing config?");

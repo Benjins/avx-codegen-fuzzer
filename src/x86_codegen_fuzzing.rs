@@ -235,7 +235,19 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 	fn save_input_to_string(&self, input : &Self::FuzzerInput) -> String {
 		input.write_to_str()
 	}
-	
+
+	fn read_input_from_string(&self, serial : &str) -> Self::FuzzerInput {
+		todo!()
+	}
+
+	fn save_meta_to_string(&self, meta: &Self::CodeMeta) -> String {
+		todo!()
+	}
+
+	fn read_meta_from_string(&self, serial: &str) -> Self::CodeMeta {
+		todo!()
+	}
+
 	fn num_inputs_per_codegen(&self) -> u32 {
 		1000
 	}

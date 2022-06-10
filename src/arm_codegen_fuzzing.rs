@@ -22,6 +22,7 @@ use crate::code_exe_server_conn::{CodeExeAndInput, CodeExeServClient};
 // 192.168.86.153 for exe server
 
 
+#[derive(Debug)]
 pub struct ARMCodegenFuzzerCodeMetadata {
 	num_i_vals : usize,
 	num_f_vals : usize,
@@ -70,6 +71,23 @@ impl ARMCodeFuzzerInputValues {
 		}
 		
 		return out_str;
+	}
+	
+	pub fn read_from_str(serial : &str) -> Self {
+		let mut lines = serial.split('\n');
+		let num_i_vals = lines.nth(0).unwrap().parse::<usize>().unwrap();
+		
+		let mut i_vals_iter = lines.nth(0).unwrap().split(' ');
+		let mut i_vals = Vec::with_capacity(num_i_vals);
+		for i_val in i_vals_iter {
+			i_vals.push(i_val.parse::<i32>().unwrap());
+		}
+		
+		Self {
+			i_vals: i_vals,
+			f_vals: Vec::new(), // TODO
+			d_vals: Vec::new(), // TODO
+		}
 	}
 }
 
@@ -196,6 +214,28 @@ fn base_type_to_core_type_and_ln2_bits(base_type : ARMBaseType) -> (u32, u32) {
 	}
 }
 
+fn core_type_and_ln2_bits_to_base_type(core_type : u32, ln2_bits : u32) -> ARMBaseType {
+	match (core_type, ln2_bits) {
+		(0, 3) => ARMBaseType::Int8,
+		(1, 3) => ARMBaseType::UInt8,
+		(0, 4) => ARMBaseType::Int16,
+		(1, 4) => ARMBaseType::UInt16,
+		(0, 5) => ARMBaseType::Int32,
+		(1, 5) => ARMBaseType::UInt32,
+		(0, 6) => ARMBaseType::Int64,
+		(1, 6) => ARMBaseType::UInt64,
+		(2, 4) => ARMBaseType::Float16,
+		(2, 5) => ARMBaseType::Float32,
+		(2, 6) => ARMBaseType::Float64,
+		(3, 3) => ARMBaseType::Poly8,
+		(3, 4) => ARMBaseType::Poly16,
+		(3, 5) => ARMBaseType::Poly32,
+		(3, 6) => ARMBaseType::Poly64,
+		(3, 7) => ARMBaseType::Poly128,
+		_ => panic!("bad core_type_and_ln2_bits_to_base_type args {}, {}", core_type, ln2_bits)
+	}
+}
+
 // is there a log2? I don't know, and it is far too late at night for me to care
 // ALSO: +1 to the log2 so we can use 0 to show that it's a primitive...idk y;all
 fn encode_simd_count(count : u32) -> u32 {
@@ -206,6 +246,17 @@ fn encode_simd_count(count : u32) -> u32 {
 		8 => 4,
 		16 => 5,
 		_ => panic!("bad simd count encoded {}", count)
+	}
+}
+
+fn decode_simd_count(encoded_count : u32) -> i32 {
+	match encoded_count {
+		1 => 1,
+		2 => 2,
+		3 => 4,
+		4 => 8,
+		5 => 16,
+		_ => panic!("bad simd count decoded {}", encoded_count)
 	}
 }
 
@@ -227,10 +278,36 @@ fn encode_return_type(return_type : ARMSIMDType) -> u32 {
 	}
 }
 
+fn decode_return_type(return_type : u32) -> ARMSIMDType {
+	let core_type = return_type & 0b11;
+	let ln2_bits = (return_type >> 2) & 0b111;
+	let encoded_simd_count = (return_type >> 5) & 0b111;
+	let array_len = (((return_type >> 8) & 0b111) + 1) as i32;
+	
+	let base_type = core_type_and_ln2_bits_to_base_type(core_type, ln2_bits);
+	let simd_count = decode_simd_count(encoded_simd_count);
+
+	if simd_count == 0 {
+		ARMSIMDType::Primitive(base_type)
+	}
+	else {
+		if array_len == 0 {
+			ARMSIMDType::SIMD(base_type, simd_count)
+		}
+		else {
+			ARMSIMDType::SIMDArr(base_type, simd_count, array_len)
+		}
+	}
+}
+
 impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues> for ARMCodegenFuzzer {
 	// Each of these will go on a thread, can contain inputs like
 	// a parsed spec data, seed, flags, config, etc.
 	fn new_fuzzer_state(input_data : Self::ThreadInput) -> Self {
+		
+		// poly8x16x2_t
+		//dbg!(encode_return_type(ARMSIMDType::SIMDArr(ARMBaseType::Poly8, 16, 2)));
+		
 		let mut all_intrinsic_return_types = Vec::new();
 		for (ret_type, _) in input_data.type_to_intrinsics_map.iter() {
 			all_intrinsic_return_types.push(*ret_type);
@@ -325,6 +402,29 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		return input.write_to_str();
 	}
 	
+	fn read_input_from_string(&self, serial : &str) -> Self::FuzzerInput {
+		ARMCodeFuzzerInputValues::read_from_str(serial)
+	}
+	
+	fn save_meta_to_string(&self, meta: &Self::CodeMeta) -> String {
+		format!("{} {} {} {}", meta.num_i_vals, meta.num_f_vals, meta.num_d_vals, encode_return_type(meta.return_type))
+	}
+
+	fn read_meta_from_string(&self, serial: &str) -> Self::CodeMeta {
+		let mut parts = serial.split(' ');
+		
+		let ret = ARMCodegenFuzzerCodeMetadata {
+			num_i_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
+			num_f_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
+			num_d_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
+			return_type : decode_return_type(parts.nth(0).unwrap().parse::<u32>().unwrap())
+		};
+		
+		println!("Got meta {:?}", ret);
+		
+		return ret;
+	}
+
 	fn num_inputs_per_codegen(&self) -> u32 {
 		1
 	}
