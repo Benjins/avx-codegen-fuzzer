@@ -7,17 +7,9 @@ use crate::arm_intrinsics::*;
 
 use std::collections::BTreeSet;
 
+const MITIGATION_AVOID_FP16 : bool = false;
 
-// Floating point is for now too much of a headache to fuzz the way we do, unless we're doing crash-only
-//const MITIGATION_AVOID_FLOATING_POINT : bool = false; // only for crash+diff
-
-// I don't know if these are supported everywhere?
-//const MITIGATION_AVOID_POLY128 : bool = false; // only for crash+diff
-//const MITIGATION_AVOID_POLY64 : bool = false; // only for crash+diff
-//const MITIGATION_AVOID_POLY32 : bool = false; // only for crash+diff
-
-// Even if we allow floating point, float16 may not be supported
-const MITIGATION_AVOID_FP16 : bool = true;
+const MITIGATION_AVOID_BF16 : bool = false;
 
 // An issue with NVCAST not having all type combinations specified,
 // fixed in 830c18047bf8ce6d4d85345567847d344f97e975
@@ -30,9 +22,9 @@ const MITIGATION_AVOID_REINTERPRET : bool = false;
 const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = false;
 
 
-pub fn ignore_type_name_if(type_name : &str) -> bool {
-	return type_name.contains("bfloat");
-}
+//pub fn type_is_bfloat(type_name : &str) -> bool {
+//	return type_name.contains("bfloat");
+//}
 
 fn get_int_from_json(val : &serde_json::Value) -> i32 {
 	if let Some(int_val) = val.as_i64() {
@@ -129,6 +121,98 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vrnd32x_f64");
 	disallowed_intrinsics.insert("vrnd32xq_f64");
 
+	// FP16 and BF16...idk
+	disallowed_intrinsics.insert("vrndah_f16");
+	disallowed_intrinsics.insert("vcvth_s16_f16");
+	disallowed_intrinsics.insert("vcvtah_f32_bf16");
+	disallowed_intrinsics.insert("vcvtnh_s32_f16");
+	disallowed_intrinsics.insert("vclth_f16");
+	disallowed_intrinsics.insert("vrndmh_f16");
+	disallowed_intrinsics.insert("vcvth_s64_f16");
+	disallowed_intrinsics.insert("vrndph_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_s64");
+	disallowed_intrinsics.insert("vcvtph_s16_f16");
+	disallowed_intrinsics.insert("vrecpeh_f16");
+	disallowed_intrinsics.insert("vrecpsh_f16");
+	disallowed_intrinsics.insert("vmulxh_f16");
+	disallowed_intrinsics.insert("vcvth_n_s16_f16");
+	disallowed_intrinsics.insert("vmaxh_f16");
+	disallowed_intrinsics.insert("vrecpxh_f16");
+	disallowed_intrinsics.insert("vsubh_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_s16");
+	disallowed_intrinsics.insert("vcvtnh_s64_f16");
+	disallowed_intrinsics.insert("vcvtmh_u64_f16");
+	disallowed_intrinsics.insert("vcageh_f16");
+	disallowed_intrinsics.insert("vrndxh_f16");
+	disallowed_intrinsics.insert("vcvth_f16_u16");
+	disallowed_intrinsics.insert("vcvth_f16_s64");
+	disallowed_intrinsics.insert("vmaxnmh_f16");
+	disallowed_intrinsics.insert("vcvth_f16_u64");
+	disallowed_intrinsics.insert("vfmsh_f16");
+	disallowed_intrinsics.insert("vceqh_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_u16");
+	disallowed_intrinsics.insert("vcvtnh_s16_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_s32");
+	disallowed_intrinsics.insert("vnegh_f16");
+	disallowed_intrinsics.insert("vminh_f16");
+	disallowed_intrinsics.insert("vcvtnh_u16_f16");
+	disallowed_intrinsics.insert("vrsqrtsh_f16");
+	disallowed_intrinsics.insert("vabsh_f16");
+	disallowed_intrinsics.insert("vcvth_f16_u32");
+	disallowed_intrinsics.insert("vaddh_f16");
+	disallowed_intrinsics.insert("vmulh_f16");
+	disallowed_intrinsics.insert("vcvtph_s32_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_u32");
+	disallowed_intrinsics.insert("vfmah_f16");
+	disallowed_intrinsics.insert("vrndh_f16");
+	disallowed_intrinsics.insert("vminnmh_f16");
+	disallowed_intrinsics.insert("vclezh_f16");
+	disallowed_intrinsics.insert("vabdh_f16");
+	disallowed_intrinsics.insert("vrsqrteh_f16");
+	disallowed_intrinsics.insert("vcvtph_s64_f16");
+	disallowed_intrinsics.insert("vrndnh_f16");
+	disallowed_intrinsics.insert("vcagth_f16");
+	disallowed_intrinsics.insert("vcvth_n_f16_u64");
+	disallowed_intrinsics.insert("vcvtmh_s64_f16");
+	disallowed_intrinsics.insert("vcvtnh_u64_f16");
+	disallowed_intrinsics.insert("vcleh_f16");
+	disallowed_intrinsics.insert("vcgth_f16");
+	disallowed_intrinsics.insert("vcvtah_s16_f16");
+	disallowed_intrinsics.insert("vcvtmh_s16_f16");
+	disallowed_intrinsics.insert("vcvtah_s32_f16");
+	disallowed_intrinsics.insert("vcvth_f16_s32");
+	disallowed_intrinsics.insert("vcvth_n_s32_f16");
+	disallowed_intrinsics.insert("vrndih_f16");
+	disallowed_intrinsics.insert("vcvtph_u64_f16");
+	disallowed_intrinsics.insert("vcvtmh_s32_f16");
+	disallowed_intrinsics.insert("vcgtzh_f16");
+	disallowed_intrinsics.insert("vsqrth_f16");
+	disallowed_intrinsics.insert("vceqzh_f16");
+	disallowed_intrinsics.insert("vcvtah_u32_f16");
+	disallowed_intrinsics.insert("vcvth_f16_s16");
+	disallowed_intrinsics.insert("vcvth_s32_f16");
+	disallowed_intrinsics.insert("vdivh_f16");
+	disallowed_intrinsics.insert("vcvtah_s64_f16");
+	disallowed_intrinsics.insert("vcvth_n_u16_f16");
+	disallowed_intrinsics.insert("vcltzh_f16");
+	disallowed_intrinsics.insert("vcvth_u64_f16");
+	disallowed_intrinsics.insert("vcaleh_f16");
+	disallowed_intrinsics.insert("vcgeh_f16");
+	disallowed_intrinsics.insert("vcvtmh_u16_f16");
+	disallowed_intrinsics.insert("vcvth_n_u64_f16");
+	disallowed_intrinsics.insert("vcvth_n_s64_f16");
+	disallowed_intrinsics.insert("vcvtnh_u32_f16");
+	disallowed_intrinsics.insert("vcvth_u16_f16");
+	disallowed_intrinsics.insert("vcvtmh_u32_f16");
+	disallowed_intrinsics.insert("vcvtah_u16_f16");
+	disallowed_intrinsics.insert("vcalth_f16");
+	disallowed_intrinsics.insert("vcvtph_u16_f16");
+	disallowed_intrinsics.insert("vcvth_n_u32_f16");
+	disallowed_intrinsics.insert("vcvth_u32_f16");
+	disallowed_intrinsics.insert("vcvtah_u64_f16");
+	disallowed_intrinsics.insert("vcgezh_f16");
+	disallowed_intrinsics.insert("vcvtph_u32_f16");
+
 	return disallowed_intrinsics;
 }
 
@@ -182,8 +266,6 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str, mitigations : &BTreeSet<S
 				args.push(arg.as_str().expect(""));
 			}
 
-			if ignore_type_name_if(return_type) || args.iter().any(|&arg| ignore_type_name_if(arg)) { continue; }
-			
 			if args.iter().any(|&arg| arg.contains("*") && !arg.contains("const")) {
 				// Store instructions, or other intrinsics that write to memory
 				continue;
@@ -244,7 +326,13 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str, mitigations : &BTreeSet<S
 					continue;
 				}
 			}
-			
+
+			if MITIGATION_AVOID_BF16 {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::BFloat16)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::BFloat16)) {
+					continue;
+				}
+			}
 
 			let intrinsic = ARMSIMDIntrinsic{intrinsic_name: name.to_string(), return_type: ret_type, param_types: intrinsic_args};
 			//println!("intrinsic {:?}", intrinsic);

@@ -106,6 +106,17 @@ impl ARMSIMDCodegenCtx {
 		return self.intrinsics_sequence.len();
 	}
 	
+	pub fn get_num_produced_nodes(&self) -> usize {
+		let mut num_produced = 0;
+		for node in self.intrinsics_sequence.iter() {
+			if matches!(node, ARMSIMDCodegenNode::Produced(_)) {
+				num_produced += 1;
+			}
+		}
+		
+		return num_produced;
+	}
+	
 	pub fn _debug_print(&self) {
 		for (idx, node) in self.intrinsics_sequence.iter().enumerate() {
 			print!("ARM Node {:3} {:?}\n", idx, node);

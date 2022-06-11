@@ -77,7 +77,7 @@ impl ARMCodeFuzzerInputValues {
 		let mut lines = serial.split('\n');
 		let num_i_vals = lines.nth(0).unwrap().parse::<usize>().unwrap();
 		
-		let mut i_vals_iter = lines.nth(0).unwrap().split(' ');
+		let i_vals_iter = lines.nth(0).unwrap().split(' ');
 		let mut i_vals = Vec::with_capacity(num_i_vals);
 		for i_val in i_vals_iter {
 			i_vals.push(i_val.parse::<i32>().unwrap());
@@ -100,6 +100,8 @@ pub struct ARMSIMDOutputValues {
 
 fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(fuzzer: &ARMCodegenFuzzer, codegen_ctx : &ARMSIMDCodegenCtx, minim_check: F) -> ARMSIMDCodegenCtx {
 	let mut best_ctx = codegen_ctx.clone();
+
+	let original_size = best_ctx.get_num_produced_nodes();
 
 	loop {
 		let mut made_progress = false;
@@ -150,7 +152,8 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 					new_ctx.mark_node_as_noop(ii);
 					print!("Trying to remove node {}, seeing if issue still repros...\n", ii);
 					if minim_check(fuzzer, &new_ctx) {
-						print!("Issue still repros, so we've made progress!\n");
+						let new_min_size = best_ctx.get_num_produced_nodes();
+						print!("Issue still repros, so we've made progress ({} -> {})!\n", original_size, new_min_size);
 						made_progress = true;
 						best_ctx = new_ctx;
 						break;
@@ -206,6 +209,7 @@ fn base_type_to_core_type_and_ln2_bits(base_type : ARMBaseType) -> (u32, u32) {
 		ARMBaseType::Float16 => (2, 4),
 		ARMBaseType::Float32 => (2, 5),
 		ARMBaseType::Float64 => (2, 6),
+		ARMBaseType::BFloat16 => panic!("cannot encode BF16"),
 		ARMBaseType::Poly8 => (3, 3),
 		ARMBaseType::Poly16 => (3, 4),
 		ARMBaseType::Poly32 => (3, 5),

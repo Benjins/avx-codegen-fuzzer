@@ -15,6 +15,7 @@ pub enum ARMBaseType {
 	Float16,
 	Float32,
 	Float64,
+	BFloat16,
 	Poly8,
 	Poly16,
 	Poly32,
@@ -204,13 +205,17 @@ pub fn parse_arm_simd_type(type_name : &str) -> ARMSIMDType {
 		"poly64x1x4_t" => ARMSIMDType::SIMDArr(ARMBaseType::Poly64, 1, 4),
 		"poly64x2x4_t" => ARMSIMDType::SIMDArr(ARMBaseType::Poly64, 2, 4),
 
-		_ => panic!("Bad")
+		"bfloat16_t" => ARMSIMDType::Primitive(ARMBaseType::BFloat16),
+		"bfloat16x4_t" => ARMSIMDType::SIMD(ARMBaseType::BFloat16, 4),
+		"bfloat16x8_t" => ARMSIMDType::SIMD(ARMBaseType::BFloat16, 8),
+
+		other_name => panic!("Bad {}", other_name)
 	}
 }
 
 pub fn is_arm_base_type_floating_point(base_type : ARMBaseType) -> bool {
 	match base_type {
-		ARMBaseType::Float16 | ARMBaseType::Float32 | ARMBaseType::Float64 => true,
+		ARMBaseType::BFloat16 | ARMBaseType::Float16 | ARMBaseType::Float32 | ARMBaseType::Float64 => true,
 		_ => false
 	}
 }
@@ -234,6 +239,7 @@ pub fn arm_base_type_size_bytes(base_type : ARMBaseType) -> usize {
 		ARMBaseType::Float16 => 2,
 		ARMBaseType::Float32 => 4,
 		ARMBaseType::Float64 => 8,
+		ARMBaseType::BFloat16 => 2,
 		ARMBaseType::Poly8 => 1,
 		ARMBaseType::Poly16 => 2,
 		ARMBaseType::Poly32 => 4,
@@ -284,6 +290,7 @@ pub fn arm_base_type_to_cpp_type_name(base_type : ARMBaseType) -> &'static str {
 		ARMBaseType::Float16 => "float16_t",
 		ARMBaseType::Float32 => "float32_t",
 		ARMBaseType::Float64 => "float64_t",
+		ARMBaseType::BFloat16 => "bfloat16_t",
 		ARMBaseType::Poly8 => "poly8_t",
 		ARMBaseType::Poly16 => "poly16_t",
 		ARMBaseType::Poly32 => "poly32_t",
@@ -333,6 +340,7 @@ fn arm_base_type_to_load_abbrev(base_type : ARMBaseType) -> &'static str {
 		ARMBaseType::Float16 => "f16",
 		ARMBaseType::Float32 => "f32",
 		ARMBaseType::Float64 => "f64",
+		ARMBaseType::BFloat16 => "bf16",
 		ARMBaseType::Poly8 => "p8",
 		ARMBaseType::Poly16 => "p16",
 		ARMBaseType::Poly32 => "p32",

@@ -364,7 +364,7 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 		connect_addr: exe_server_connect_addr
 	};
 	
-	let mut fuzzer = ARMCodegenFuzzer::new_fuzzer_state(repro_input);
+	let fuzzer = ARMCodegenFuzzer::new_fuzzer_state(repro_input);
 	
 	let res = test_generated_code_compilation(&repro_code, &compilation_tests);
 
@@ -392,12 +392,18 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 				}
 			}
 			
-			if !all_outputs_same {
+			if all_outputs_same {
+				println!("ALL SAME: {:?}", first_output.unwrap());
+				std::process::exit(1);
+			}
+			else {
 				println!("Succeeded in repro'ing the issue...different results on outputs");
+				std::process::exit(0);
 			}
 		}
 		_ => {
-			panic!("did not succeed in compiling repro case...is that expected?");
+			println!("did not succeed in compiling repro case...is that expected?");
+			std::process::exit(1);
 		}
 	}
 }
