@@ -15,7 +15,7 @@ simd_gen_test.min.cpp
 simd_gen_min_test.cpp
 
 
-fuzz_issues/compiler_crashes/*
+fuzz_issues/compiler_fails/*
 fuzz_issues/compiler_timeouts/*
 fuzz_issues/runtime_diffs/*
 tmp/*
