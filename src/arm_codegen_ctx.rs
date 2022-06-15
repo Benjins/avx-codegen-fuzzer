@@ -321,7 +321,17 @@ fn arm_generate_cpp_entry_code_for_type(cpp_code: &mut String, var_idx : usize, 
 		ARMSIMDType::Primitive(base_type) => {
 			// TODO: float vs double?
 			if is_arm_base_type_floating_point(base_type) {
-				write!(cpp_code, "fVals[{}]", num_f_vals).expect("");
+				match base_type {
+					ARMBaseType::BFloat16 => {
+						write!(cpp_code, "vcvth_bf16_f32(fVals[{}])", num_f_vals).expect("");
+					}
+					ARMBaseType::Float16 => {
+						write!(cpp_code, "(float16_t)(fVals[{}])", num_f_vals).expect("");
+					}
+					_ => {
+						write!(cpp_code, "fVals[{}]", num_f_vals).expect("");
+					}
+				}
 				num_f_vals += (size_of_type + 3) / 4;
 			}
 			else {
