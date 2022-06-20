@@ -220,7 +220,7 @@ impl AsmCodegenNodeAsm {
 		for (ii, output) in reg_constraints.outputs.iter().enumerate() {
 			if ii != 0 { code.push_str(", "); }
 			// TODO: Avoid early clobber constraint if possible
-			let constraint = if reg_constraints.inputs.contains(output) { "+r" } else { "=&r" };
+			let constraint = if reg_constraints.inputs.contains(output) { "+&r" } else { "=&r" };
 			write!(code, "[c_{}] \"{}\"(c_{})", output, constraint, output).expect("");
 		}
 
@@ -288,7 +288,7 @@ struct AsmCodegenNodeCpp {
 
 impl AsmCodegenNodeCpp {
 	pub fn write_cpp_code(&self, code : &mut String) {
-		write!(code, "c_{} = ", self.dest_var);
+		write!(code, "c_{} = ", self.dest_var).expect("");
 		match self.op {
 			AsmCodegenCppOp::Add => {
 				assert!(self.inputs.len() == 2);
@@ -336,36 +336,37 @@ impl AsmCodegenCtx {
 		let mut rng = Rand::new(seed);
 
 		let loop_stride = rng.rand() % 8 + 4;
-
 		let num_nodes = rng.rand() % 20 + 10;
-		
-		let mut written_tmp_registers = BTreeSet::new();
-		let mut get_random_asm_value = |is_output, this_rng: &mut Rand| {
-			let decider = this_rng.rand() % 2;
-			// tmp register
-			if (is_output || written_tmp_registers.len() > 0) && written_tmp_registers.len() < 6 && decider == 0 {
-				if is_output {
-					let reg = AsmRegister::random(this_rng);
-					written_tmp_registers.insert(reg);
-					return AsmCodegenAsmValue::AsmReg(reg);
-				}
-				else {
-					// Pick random register in written_tmp_registers
-					let idx = this_rng.rand_size() % written_tmp_registers.len();
-					return AsmCodegenAsmValue::AsmReg(*written_tmp_registers.iter().nth(idx).unwrap());
-				}
-			}
-			// C variable
-			else {
-				return AsmCodegenAsmValue::CVar(this_rng.rand() % loop_stride);
-			}
-		};
-		
+
 		let mut nodes = Vec::with_capacity(num_nodes as usize);
 		for _ in 0..num_nodes {
 			let decider = rng.rand() % 3;
 			// inline asm
 			if decider == 0 {
+				// We can't really expect registers to not get clobbered across different asm blocks
+
+				let mut written_tmp_registers = BTreeSet::new();
+				let mut get_random_asm_value = |is_output, this_rng: &mut Rand| {
+					let decider = this_rng.rand() % 2;
+					// tmp register
+					if (is_output || written_tmp_registers.len() > 0) && written_tmp_registers.len() < 6 && decider == 0 {
+						if is_output {
+							let reg = AsmRegister::random(this_rng);
+							written_tmp_registers.insert(reg);
+							return AsmCodegenAsmValue::AsmReg(reg);
+						}
+						else {
+							// Pick random register in written_tmp_registers
+							let idx = this_rng.rand_size() % written_tmp_registers.len();
+							return AsmCodegenAsmValue::AsmReg(*written_tmp_registers.iter().nth(idx).unwrap());
+						}
+					}
+					// C variable
+					else {
+						return AsmCodegenAsmValue::CVar(this_rng.rand() % loop_stride);
+					}
+				};
+
 				let num_stmts = rng.rand() % 6 + 1;
 				let mut stmts = Vec::with_capacity(num_stmts as usize);
 				for _ in 0..num_stmts {
@@ -374,9 +375,11 @@ impl AsmCodegenCtx {
 					
 					let stmt = match decider {
 						0 => {
+							let in0 = get_random_asm_value(false, &mut rng);
+							let in1 = get_random_asm_value(false, &mut rng);
 							AsmCodegenAsmStmt {
 								opcode: AsmCodegenOpcode::Lea,
-								values: vec![get_random_asm_value(true, &mut rng), get_random_asm_value(false, &mut rng), get_random_asm_value(false, &mut rng)],
+								values: vec![get_random_asm_value(true, &mut rng), in0, in1],
 								out_val_idx: 0,
 								in_val_indices: vec![1, 2]
 							}
@@ -390,9 +393,10 @@ impl AsmCodegenCtx {
 							}
 						}
 						2 => {
+							let in0 = get_random_asm_value(false, &mut rng);
 							AsmCodegenAsmStmt {
 								opcode: AsmCodegenOpcode::Mov,
-								values: vec![get_random_asm_value(true, &mut rng), get_random_asm_value(false, &mut rng)],
+								values: vec![get_random_asm_value(true, &mut rng), in0],
 								out_val_idx: 0,
 								in_val_indices: vec![1]
 							}
@@ -439,7 +443,7 @@ impl AsmCodegenCtx {
 	pub fn generate_cpp_code(&self) -> String {
 		let mut cpp_code = String::with_capacity(32*1024);
 		
-		write!(&mut cpp_code, "extern \"C\" void do_stuff(const long long* __restrict inputs, long long* __restrict outputs, int count) {{\n").expect("");
+		write!(&mut cpp_code, "extern \"C\" void do_stuff(const unsigned long long* __restrict inputs, unsigned long long* __restrict outputs, int count) {{\n").expect("");
 		
 		// TODO configure loop stride
 		write!(&mut cpp_code, "\tfor (int i = 0; i < count - {}; i+= {}) {{\n", self.loop_stride - 1, self.loop_stride).expect("");
@@ -497,7 +501,7 @@ impl CodegenFuzzer<AsmFuzzerThreadInput, AsmCodegenCtx, AsmFuzzerCodeMetadata, A
 		return (code, AsmFuzzerCodeMetadata { loop_stride: ctx.get_loop_stride() })
 	}
 
-	fn generate_random_input(&self, code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
+	fn generate_random_input(&self, _code_meta : &Self::CodeMeta) -> Self::FuzzerInput {
 		// Meh, kinda wish we didn't need to just make a new one since it requires mutability
 		let mut rng = Rand::default();
 
@@ -519,8 +523,75 @@ impl CodegenFuzzer<AsmFuzzerThreadInput, AsmCodegenCtx, AsmFuzzerCodeMetadata, A
 
 	// uhh.....idk
 	fn try_minimize<F: Fn(&Self, &Self::CodegenCtx) -> bool>(&self, ctx: Self::CodegenCtx, func: F) -> Option<Self::CodegenCtx> {
-		return None;
-		//todo!()
+		let mut best_ctx = ctx.clone();
+		loop {
+			let mut made_progress = false;
+			for ii in 0..best_ctx.nodes.len() {
+				// If it's already a no-op, don't try to make it one again
+				if matches!(best_ctx.nodes[ii], AsmCodegenNode::NoOp) {
+					continue;
+				}
+
+				let old_node = best_ctx.nodes[ii].clone();
+				best_ctx.nodes[ii] = AsmCodegenNode::NoOp;
+				
+				if func(self, &best_ctx) {
+					made_progress = true;
+				}
+				else {
+					best_ctx.nodes[ii] = old_node;
+				}
+			}
+			
+			if made_progress {
+				let mut num_non_noops = 0;
+				for node in best_ctx.nodes.iter() {
+					if !matches!(node, AsmCodegenNode::NoOp) {
+						num_non_noops += 1;
+					}
+				}
+				
+				println!("Made progress in minimiing, now {}/{} nodes", num_non_noops, best_ctx.nodes.len());
+			}
+			else {
+				println!("Could not make further progress, done minimizing nodes...");
+				break;
+			}
+		}
+		
+		// Once we've tried reducing the nodes, try to reduce statements in each asm node
+		// NOTE: (cannot skip: if we cannot remove an asm stmt N, then 1..N cannot be removed either
+		// We could be smarter about it, but for now the dependencies would be too complicated
+		for ii in 0..best_ctx.nodes.len() {
+			if let AsmCodegenNode::Asm(mut asm) = best_ctx.nodes[ii].clone() {
+				let start_count = asm.stmts.len();
+				loop {
+					if let Some(_stmt) = asm.stmts.pop() {
+						let old_node = best_ctx.nodes[ii].clone();
+						best_ctx.nodes[ii] = AsmCodegenNode::Asm(asm.clone());
+						
+						if func(self, &best_ctx) {
+							// Cool
+						}
+						else {
+							best_ctx.nodes[ii] = old_node;
+							if let AsmCodegenNode::Asm(asm) = &best_ctx.nodes[ii] {
+								println!("Reduced asm stmt count from {} -> {}", start_count, asm.stmts.len());
+							}
+							else {
+								panic!("unreachable");
+							}
+							break;
+						}
+					}
+					else {
+						println!("Reduced asm stmt count from {} -> 0, so....yeah?", start_count);
+					}
+				}
+			}
+		}
+		
+		return Some(best_ctx);
 	}
 
 	// Actually execute it: this is probably like local, but 
