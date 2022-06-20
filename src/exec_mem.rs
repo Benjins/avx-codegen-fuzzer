@@ -105,6 +105,15 @@ impl ExecPage {
 		}
 	}
 	
+	pub fn execute_with_u64_io(&self, input: &[u64], output: &mut [u64]) {
+		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
+		let func: unsafe extern "C" fn(*const u64, *mut u64) = unsafe { std::mem::transmute(func_ptr) };
+
+		unsafe {
+			func(input.as_ptr(), output.as_mut_ptr());
+		}
+	}
+	
 	pub fn get_bytes(&self) -> &[u8] {
 		return &self.page[..self.code_size];
 	}
