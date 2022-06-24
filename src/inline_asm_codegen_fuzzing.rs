@@ -198,6 +198,31 @@ impl AsmCodegenRegConstraints {
 }
 
 impl AsmCodegenNodeAsm {
+	fn does_output_need_early_clobber(&self, output : u32) -> bool {
+		let mut has_found_first_output = false;
+		for stmt in self.stmts.iter() {
+			// Check this after we set it: if we read an input on the same statement that we output,
+			// that's fine and doesn't require an early clobber
+			if has_found_first_output {
+				for input_index in stmt.in_val_indices.iter() {
+					// If we read an input after we first write the output,
+					// then we need an early
+					if let AsmCodegenAsmValue::CVar(_) = stmt.values[*input_index] {
+						return true;
+					}
+				}
+			}
+			
+			if let AsmCodegenAsmValue::CVar(var_idx) = stmt.values[stmt.out_val_idx] {
+				if var_idx == output {
+					has_found_first_output = true;
+				}
+			}
+		}
+		
+		return false;
+	}
+	
 	pub fn write_to_cpp_code(&self, code : &mut String) {
 		code.push_str("asm(");
 
@@ -218,9 +243,16 @@ impl AsmCodegenNodeAsm {
 
 		// output constraints
 		for (ii, output) in reg_constraints.outputs.iter().enumerate() {
+			let is_early_clobber = self.does_output_need_early_clobber(*output);
+			
 			if ii != 0 { code.push_str(", "); }
 			// TODO: Avoid early clobber constraint if possible
-			let constraint = if reg_constraints.inputs.contains(output) { "+&r" } else { "=&r" };
+			let constraint = if is_early_clobber {
+				if reg_constraints.inputs.contains(output) { "+&r" } else { "=&r" }
+			}
+			else {
+				if reg_constraints.inputs.contains(output) { "+r" } else { "=r" }
+			};
 			write!(code, "[c_{}] \"{}\"(c_{})", output, constraint, output).expect("");
 		}
 
@@ -335,8 +367,10 @@ impl AsmCodegenCtx {
 	pub fn new(seed : u64) -> Self {
 		let mut rng = Rand::new(seed);
 
-		let loop_stride = rng.rand() % 8 + 4;
-		let num_nodes = rng.rand() % 20 + 10;
+		let loop_stride = rng.rand() % 24 + 3;
+		let num_nodes = rng.rand() % 100 + 10;
+		
+		let max_reg_access = std::cmp::min(loop_stride, 9);
 
 		let mut nodes = Vec::with_capacity(num_nodes as usize);
 		for _ in 0..num_nodes {
@@ -363,11 +397,11 @@ impl AsmCodegenCtx {
 					}
 					// C variable
 					else {
-						return AsmCodegenAsmValue::CVar(this_rng.rand() % loop_stride);
+						return AsmCodegenAsmValue::CVar(this_rng.rand() % max_reg_access);
 					}
 				};
 
-				let num_stmts = rng.rand() % 6 + 1;
+				let num_stmts = rng.rand() % 10 + 1;
 				let mut stmts = Vec::with_capacity(num_stmts as usize);
 				for _ in 0..num_stmts {
 					
@@ -586,6 +620,7 @@ impl CodegenFuzzer<AsmFuzzerThreadInput, AsmCodegenCtx, AsmFuzzerCodeMetadata, A
 					}
 					else {
 						println!("Reduced asm stmt count from {} -> 0, so....yeah?", start_count);
+						break;
 					}
 				}
 			}
@@ -615,8 +650,8 @@ impl CodegenFuzzer<AsmFuzzerThreadInput, AsmCodegenCtx, AsmFuzzerCodeMetadata, A
 		todo!()
 	}
 
-	fn save_meta_to_string(&self, _meta: &Self::CodeMeta) -> String {
-		todo!()
+	fn save_meta_to_string(&self, meta: &Self::CodeMeta) -> String {
+		format!("{}", meta.loop_stride)
 	}
 
 	fn read_meta_from_string(&self, _serial: &str) -> Self::CodeMeta {
