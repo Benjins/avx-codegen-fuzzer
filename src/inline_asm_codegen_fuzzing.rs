@@ -89,6 +89,7 @@ impl AsmRegister {
 #[derive(Clone, Debug)]
 enum AsmCodegenAsmValue {
 	CVar(u32),
+	CVarPtr(u32),
 	AsmReg(AsmRegister)
 }
 
@@ -97,6 +98,9 @@ impl AsmCodegenAsmValue {
 		match self {
 			AsmCodegenAsmValue::CVar(var_idx) => {
 				write!(code, "%[c_{}]", var_idx).expect("");
+			}
+			AsmCodegenAsmValue::CVarPtr(var_idx) => {
+				write!(code, "%[p_{}]", var_idx).expect("");
 			}
 			AsmCodegenAsmValue::AsmReg(reg) => {
 				code.push_str(reg.to_string());
@@ -165,6 +169,8 @@ struct AsmCodegenNodeAsm {
 struct AsmCodegenRegConstraints {
 	pub outputs : BTreeSet<u32>,
 	pub inputs : BTreeSet<u32>,
+	pub input_ptrs : BTreeSet<u32>,
+	pub output_ptrs : BTreeSet<u32>,
 	pub temps : BTreeSet<AsmRegister>
 }
 
@@ -183,6 +189,9 @@ impl AsmCodegenRegConstraints {
 			AsmCodegenAsmValue::CVar(var_idx) => {
 				self.outputs.insert(var_idx);
 			}
+			AsmCodegenAsmValue::CVarPtr(var_idx) => {
+				self.output_ptrs.insert(var_idx);
+			}
 			_ => { /*do nothing*/ }
 		}
 		
@@ -190,6 +199,9 @@ impl AsmCodegenRegConstraints {
 			match stmt.values[*idx] {
 				AsmCodegenAsmValue::CVar(var_idx) => {
 					self.inputs.insert(var_idx);
+				}
+				AsmCodegenAsmValue::CVarPtr(var_idx) => {
+					self.input_ptrs.insert(var_idx);
 				}
 				_ => { /*do nothing*/ }
 			}
@@ -207,13 +219,40 @@ impl AsmCodegenNodeAsm {
 				for input_index in stmt.in_val_indices.iter() {
 					// If we read an input after we first write the output,
 					// then we need an early
-					if let AsmCodegenAsmValue::CVar(_) = stmt.values[*input_index] {
+					// TODO: Does this need to check both?
+					if let AsmCodegenAsmValue::CVar(_) | AsmCodegenAsmValue::CVarPtr(_) = stmt.values[*input_index] {
 						return true;
 					}
 				}
 			}
 			
 			if let AsmCodegenAsmValue::CVar(var_idx) = stmt.values[stmt.out_val_idx] {
+				if var_idx == output {
+					has_found_first_output = true;
+				}
+			}
+		}
+		
+		return false;
+	}
+	
+	fn does_output_ptr_need_early_clobber(&self, output : u32) -> bool {
+		let mut has_found_first_output = false;
+		for stmt in self.stmts.iter() {
+			// Check this after we set it: if we read an input on the same statement that we output,
+			// that's fine and doesn't require an early clobber
+			if has_found_first_output {
+				for input_index in stmt.in_val_indices.iter() {
+					// If we read an input after we first write the output,
+					// then we need an early
+					// TODO: Does this need to check both?
+					if let AsmCodegenAsmValue::CVar(_) | AsmCodegenAsmValue::CVarPtr(_) = stmt.values[*input_index] {
+						return true;
+					}
+				}
+			}
+			
+			if let AsmCodegenAsmValue::CVarPtr(var_idx) = stmt.values[stmt.out_val_idx] {
 				if var_idx == output {
 					has_found_first_output = true;
 				}
@@ -255,6 +294,21 @@ impl AsmCodegenNodeAsm {
 			};
 			write!(code, "[c_{}] \"{}\"(c_{})", output, constraint, output).expect("");
 		}
+		
+		for (ii, output_ptr) in reg_constraints.output_ptrs.iter().enumerate() {
+			let is_early_clobber = self.does_output_ptr_need_early_clobber(*output_ptr);
+			
+			if reg_constraints.outputs.len() != 0 || ii != 0 { code.push_str(", "); }
+			// TODO: Avoid early clobber constraint if possible
+			let constraint = if is_early_clobber {
+				// TODO: Is "+&m" just not allowed?
+				if reg_constraints.input_ptrs.contains(output_ptr) { "+m" } else { "=&m" }
+			}
+			else {
+				if reg_constraints.input_ptrs.contains(output_ptr) { "+m" } else { "=m" }
+			};
+			write!(code, "[p_{}] \"{}\"(*&c_{})", output_ptr, constraint, output_ptr).expect("");
+		}
 
 		code.push_str("\n\t\t\t:");
 
@@ -268,6 +322,16 @@ impl AsmCodegenNodeAsm {
 				}
 				if needs_comma { code.push_str(", "); }
 				write!(code, "[c_{}] \"r\"(c_{})", input, input).expect("");
+				needs_comma = true;
+			}
+
+			for input_ptr in reg_constraints.input_ptrs.iter() {
+				// Input/Output combinations handled above, requires a different constraint
+				if reg_constraints.output_ptrs.contains(input_ptr) {
+					continue;
+				}
+				if needs_comma { code.push_str(", "); }
+				write!(code, "[p_{}] \"m\"(*&c_{})", input_ptr, input_ptr).expect("");
 				needs_comma = true;
 			}
 		}
@@ -380,8 +444,8 @@ impl AsmCodegenCtx {
 				// We can't really expect registers to not get clobbered across different asm blocks
 
 				let mut written_tmp_registers = BTreeSet::new();
-				let mut get_random_asm_value = |is_output, this_rng: &mut Rand| {
-					let decider = this_rng.rand() % 2;
+				let mut get_random_asm_value = |is_output, can_be_mem, this_rng: &mut Rand| {
+					let decider = this_rng.rand() % 3;
 					// tmp register
 					if (is_output || written_tmp_registers.len() > 0) && written_tmp_registers.len() < 6 && decider == 0 {
 						if is_output {
@@ -396,6 +460,9 @@ impl AsmCodegenCtx {
 						}
 					}
 					// C variable
+					else if can_be_mem && decider == 1 {
+						return AsmCodegenAsmValue::CVarPtr(this_rng.rand() % max_reg_access);
+					}
 					else {
 						return AsmCodegenAsmValue::CVar(this_rng.rand() % max_reg_access);
 					}
@@ -409,11 +476,11 @@ impl AsmCodegenCtx {
 					
 					let stmt = match decider {
 						0 => {
-							let in0 = get_random_asm_value(false, &mut rng);
-							let in1 = get_random_asm_value(false, &mut rng);
+							let in0 = get_random_asm_value(false, false, &mut rng);
+							let in1 = get_random_asm_value(false, false, &mut rng);
 							AsmCodegenAsmStmt {
 								opcode: AsmCodegenOpcode::Lea,
-								values: vec![get_random_asm_value(true, &mut rng), in0, in1],
+								values: vec![get_random_asm_value(true, false, &mut rng), in0, in1],
 								out_val_idx: 0,
 								in_val_indices: vec![1, 2]
 							}
@@ -421,24 +488,35 @@ impl AsmCodegenCtx {
 						1 => {
 							AsmCodegenAsmStmt {
 								opcode: AsmCodegenOpcode::IMul,
-								values: vec![get_random_asm_value(false, &mut rng), get_random_asm_value(false, &mut rng)],
+								values: vec![get_random_asm_value(false, false, &mut rng), get_random_asm_value(false, true, &mut rng)],
 								out_val_idx: 0,
 								in_val_indices: vec![0, 1]
 							}
 						}
 						2 => {
-							let in0 = get_random_asm_value(false, &mut rng);
-							AsmCodegenAsmStmt {
-								opcode: AsmCodegenOpcode::Mov,
-								values: vec![get_random_asm_value(true, &mut rng), in0],
-								out_val_idx: 0,
-								in_val_indices: vec![1]
+							if rng.rand() % 2 == 0 {
+								let in0 = get_random_asm_value(false, false, &mut rng);
+								AsmCodegenAsmStmt {
+									opcode: AsmCodegenOpcode::Mov,
+									values: vec![get_random_asm_value(true, true, &mut rng), in0],
+									out_val_idx: 0,
+									in_val_indices: vec![1]
+								}
+							}
+							else {
+								let in0 = get_random_asm_value(false, true, &mut rng);
+								AsmCodegenAsmStmt {
+									opcode: AsmCodegenOpcode::Mov,
+									values: vec![get_random_asm_value(true, false, &mut rng), in0],
+									out_val_idx: 0,
+									in_val_indices: vec![1]
+								}
 							}
 						}
 						3 => {
 							AsmCodegenAsmStmt {
 								opcode: AsmCodegenOpcode::Xor,
-								values: vec![get_random_asm_value(false, &mut rng), get_random_asm_value(false, &mut rng)],
+								values: vec![get_random_asm_value(false, false, &mut rng), get_random_asm_value(false, true, &mut rng)],
 								out_val_idx: 0,
 								in_val_indices: vec![0, 1]
 							}
