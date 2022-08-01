@@ -484,14 +484,6 @@ pub fn generate_cpp_code_from_x86_codegen_ctx(ctx: &X86SIMDCodegenCtx) -> (Strin
 	let return_type = ctx.get_return_type();
 	let return_type_name = x86_simd_type_to_cpp_type_name(return_type);
 
-	cpp_code.push_str("#if defined(_MSC_VER)\n");
-	cpp_code.push_str("__declspec(noinline)\n");
-	cpp_code.push_str("#elif defined(__clang__)\n");
-	cpp_code.push_str("__attribute__((noinline))\n");
-	cpp_code.push_str("#else\n");
-	cpp_code.push_str("#error \"Not supported compiler, need to add branch for no-inline attribute\"\n");
-	cpp_code.push_str("#endif\n");
-
 	write!(&mut cpp_code, "extern \"C\" {} do_stuff(const int* iVals, const float* fVals, const double* dVals);\n", return_type_name).expect("");
 	write!(&mut cpp_code, "{} do_stuff(const int* iVals, const float* fVals, const double* dVals) {{\n", return_type_name).expect("");
 

@@ -69,7 +69,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let mut chk_stk_file_offset = None;
 
 	for symbol in obj_file.symbols() {
-		if symbol.name().expect("") == "__chkstk" {
+		if symbol.name().expect("") == "__chkstk" || symbol.name().expect("") == "__stack_chk_fail" {
 			// We have a stack-check, so we want to insert an empty function body, and have all calls link to that instead
 			// This isn't ideal, since in theory the compiler could mis-optimize a stack memory access, and we wouldn't catch it
 			// However given that we're running this in our own process anyway, we kinda just assume that that doesn't happen
@@ -79,11 +79,15 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 		}
 	}
 
-	let mut memset_file_offset = None;
-	for symbol in obj_file.symbols() {
-		if symbol.name().expect("") == "memset" {
-			memset_file_offset = Some(bytes_loaded_into_memory.len());
-			bytes_loaded_into_memory.extend_from_slice(&MEMSET_X86_BYTES[..]);
+	let mut memset_file_offset : Option<usize> = None;
+
+	#[cfg(target_os = "windows")]
+	{		
+		for symbol in obj_file.symbols() {
+			if symbol.name().expect("") == "memset" {
+				memset_file_offset = Some(bytes_loaded_into_memory.len());
+				bytes_loaded_into_memory.extend_from_slice(&MEMSET_X86_BYTES[..]);
+			}
 		}
 	}
 
@@ -216,7 +220,42 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 								_ => { panic!("Elf reloc with other target: {:?}", reloc_target); }
 							}
 						}
-						_ => { panic!("Bad relocation kind {:?}", reloc); }
+						_ => {
+							let reloc_target = reloc.target();
+							match reloc_target {
+								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
+									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
+									if target_symbol.name().unwrap() == "__stack_chk_fail" {
+										// TODO: Some code dup with above
+										let encoding = reloc.encoding();
+										let reloc_size = reloc.size() as usize;
+										if encoding == object::RelocationEncoding::Generic {
+											let reloc_offset_in_memory = (chk_stk_file_offset.unwrap()) as i64;
+											let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
+											// TODO: wait do we need the addend?
+											let addend = reloc.addend();
+											let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
+											exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset, reloc.has_implicit_addend());
+										}
+										else {
+											panic!("bad relocation encoding");
+										}
+									}
+									else {
+										println!("Unknown reloc symbol {:?}", target_symbol);
+										std::fs::write("unknown_reloc_kind_unknown_sym.elf", bin_data).expect("failed to write file");
+										panic!("not recognised symbol in unknown reloc kind");
+									}
+								}
+								_ => {
+									std::fs::write("unknown_reloc_kind_unknown_sym.elf", bin_data).expect("failed to write file");
+									panic!("Non-symbol in unknown reloc kind");
+								}
+							}
+							
+							//std::fs::write("unknown_reloc_kind_unknown.elf", bin_data).expect("failed to write file");
+							//panic!("Bad relocation kind {:?}", reloc);
+						}
 					}
 					
 				}
