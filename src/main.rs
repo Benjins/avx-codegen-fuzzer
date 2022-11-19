@@ -356,8 +356,22 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 	let input_txt = std::fs::read_to_string(input_filename).expect("could not read code meta file");
 
 	let compilation_config = parse_compiler_config(&config_contents);
-	let compilation_tests = compilation_config.compilations;
+	
+	let mut compilation_tests = compilation_config.compilations;
 	let fuzz_mode = compilation_config.fuzz_mode;
+
+	println!("~~~~~~~~~");
+	println!("{:?}", compilation_tests);
+	println!("~~~~~~~~~");
+	for compilation_test in compilation_tests.iter_mut() {
+		if compilation_test.use_tmp_file {
+			let tmp_filename = "tmp/x86_tmp_thr_repro.o";
+			for arg in compilation_test.compiler_args.iter_mut() {
+				*arg = arg.replace("^TMP_FILENAME^", tmp_filename);
+			}
+			compilation_test.tmp_file_name = Some(tmp_filename.to_string());
+		}
+	}
 
 	let mut exe_server_connect_addr : String = "".to_string();
 	if let Some(extra_config) = compilation_config.extra_config.as_object() {
@@ -691,7 +705,7 @@ fn main() {
 		let config_filename = std::env::args().nth(2).expect("missing config?");
 		let repro_filename = std::env::args().nth(3).expect("missing repro filename?");
 		let meta_filename = std::env::args().nth(4).expect("missing meta filename?");
-		let input_filename = std::env::args().nth(5).expect("missing meta filename?");
+		let input_filename = std::env::args().nth(5).expect("missing input filename?");
 		repro_arm_simd_codegen(&config_filename, &repro_filename, &meta_filename, &input_filename);
 	}
 	else if method == "fuzz-loop" {

@@ -156,7 +156,9 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 						print!("Issue still repros, so we've made progress ({} -> {})!\n", original_size, new_min_size);
 						made_progress = true;
 						best_ctx = new_ctx;
-						break;
+						
+						// TODO: Make it more greedy this way
+						//break;
 					}
 				}
 			}
@@ -358,8 +360,11 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	// Actually execute it: this is probably like local, but 
 	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
 		
+		//let dbg_return_type = ARMSIMDType::SIMDArr(ARMBaseType::Poly8, 16, 2);
+		//println!("{:?} return type encoded as {}", dbg_return_type, encode_return_type(dbg_return_type));
+		
 		let encoded_return_type = encode_return_type(code_meta.return_type);
-		//println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
+		println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
 
 		let code_exe_and_input = CodeExeAndInput {
 			code_bytes: exec_page.get_bytes(),

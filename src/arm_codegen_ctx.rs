@@ -243,7 +243,7 @@ pub fn generate_arm_codegen_ctx(ctx : &mut ARMSIMDCodegenCtx, intrinsics_by_type
 	let ending_type = all_intrinsic_return_types[ctx.rng.rand_size() % all_intrinsic_return_types.len()];
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
-	let num_node_iterations : usize = 20 + (ctx.rng.rand_size() % 200);
+	let num_node_iterations : usize = 600 + (ctx.rng.rand_size() % 100);
 	let chance_for_zero_node : f32 = match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
 
 	// TODO: Meh, could be better placed

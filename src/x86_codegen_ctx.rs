@@ -312,7 +312,7 @@ pub fn generate_x86_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type
 
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
-	let num_node_iterations : usize = 50 + (ctx.rng.rand_size() % 200);
+	let num_node_iterations : usize = 1000 + (ctx.rng.rand_size() % 1000);
 	let chance_for_zero_node : f32 = match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
 
 	for ii in 0..num_node_iterations {

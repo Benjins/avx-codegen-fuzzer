@@ -192,14 +192,14 @@ pub fn parse_compiler_config(config : &str) -> CompilationConfig {
 			compiler_args.push(compiler_arg.as_str().expect("compiler_args must contain strings").to_string());
 		}
 		
-		let use_tmp_file = compilation["use_temp_file"].as_bool().unwrap_or(false);
+		let use_temp_file = compilation["use_temp_file"].as_bool().unwrap_or(false);
 		
 		test_compilations.push(TestCompilation {
 			compiler_exe : compiler_exe,
 			compiler_args :compiler_args,
 			timeout_seconds : timeout,
 			tmp_file_name: None, // will be filled in later...yeah could be better
-			use_tmp_file: use_tmp_file
+			use_tmp_file: use_temp_file
 		});
 	}
 	

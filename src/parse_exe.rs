@@ -40,6 +40,29 @@ const MEMSET_X86_BYTES : [u8 ; 28] = [
   0xc3                                 // retq
 ];
 
+#[cfg(target_os = "windows")]
+const CHKSTK_WIN_BYTES : [u8 ; 78] = [
+	0x48, 0x83, 0xEC, 0x10,                                //sub         rsp,10h  
+	0x4C, 0x89, 0x14, 0x24,                                //mov         qword ptr [rsp],r10  
+	0x4C, 0x89, 0x5C, 0x24, 0x08,                          //mov         qword ptr [rsp+8],r11  
+	0x4D, 0x33, 0xDB,                                      //xor         r11,r11  
+	0x4C, 0x8D, 0x54, 0x24, 0x18,                          //lea         r10,[rsp+18h]  
+	0x4C, 0x2B, 0xD0,                                      //sub         r10,rax  
+	0x4D, 0x0F, 0x42, 0xD3,                                //cmovb       r10,r11  
+	0x65, 0x4C, 0x8B, 0x1C, 0x25, 0x10, 0x00, 0x00, 0x00,  //mov         r11,qword ptr gs:[10h]  
+	0x4D, 0x3B, 0xD3,                                      //cmp         r10,r11  
+	0x73, 0x16,                                            //jae         cs10+10h (07FF6E4AE7AB0h)  
+	0x66, 0x41, 0x81, 0xE2, 0x00, 0xF0,                    //and         r10w,0F000h  
+	0x4D, 0x8D, 0x9B, 0x00, 0xF0, 0xFF, 0xFF,              //lea         r11,[r11-1000h]  
+	0x41, 0xC6, 0x03, 0x00,                                //mov         byte ptr [r11],0  
+	0x4D, 0x3B, 0xD3,                                      //cmp         r10,r11  
+	0x75, 0xF0,                                            //jne         cs10 (07FF6E4AE7AA0h)  
+	0x4C, 0x8B, 0x14, 0x24,                                //mov         r10,qword ptr [rsp]  
+	0x4C, 0x8B, 0x5C, 0x24, 0x08,                          //mov         r11,qword ptr [rsp+8]  
+	0x48, 0x83, 0xC4, 0x10,                                //add         rsp,10h  
+	0xC3,                                                  //ret  
+];
+
 pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let obj_file = object::File::parse(bin_data).expect("");
 	
@@ -52,6 +75,8 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 
 		forbidden_sections
 	};
+	
+	//std::fs::write("latest_obj_file.obj", bin_data).expect("");
 	
 	for section in obj_file.sections() {
 		let section_name = section.name();
@@ -66,27 +91,26 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 		//println!("section addr {} {:?}", section.address(), section);
 	}
 
-	let mut chk_stk_file_offset = None;
-
-	for symbol in obj_file.symbols() {
-		if symbol.name().expect("") == "__chkstk" || symbol.name().expect("") == "__stack_chk_fail" {
-			// We have a stack-check, so we want to insert an empty function body, and have all calls link to that instead
-			// This isn't ideal, since in theory the compiler could mis-optimize a stack memory access, and we wouldn't catch it
-			// However given that we're running this in our own process anyway, we kinda just assume that that doesn't happen
-			chk_stk_file_offset = Some(bytes_loaded_into_memory.len());
-			bytes_loaded_into_memory.push(0xc3);
-			break;
-		}
-	}
 
 	let mut memset_file_offset : Option<usize> = None;
+	let mut chk_stk_file_offset : Option<usize> = None;
+	let mut chk_stk_fail_file_offset : Option<usize> = None;
 
 	#[cfg(target_os = "windows")]
 	{		
 		for symbol in obj_file.symbols() {
-			if symbol.name().expect("") == "memset" {
+			if memset_file_offset.is_none() && symbol.name().expect("") == "memset" {
 				memset_file_offset = Some(bytes_loaded_into_memory.len());
 				bytes_loaded_into_memory.extend_from_slice(&MEMSET_X86_BYTES[..]);
+			}
+			else if chk_stk_file_offset.is_none() && symbol.name().expect("") == "__chkstk" {
+				chk_stk_file_offset = Some(bytes_loaded_into_memory.len());
+				bytes_loaded_into_memory.extend_from_slice(&CHKSTK_WIN_BYTES[..]);
+				//println!("CHKSTK found!!");
+			}
+			else if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_fail" {
+				chk_stk_fail_file_offset = Some(bytes_loaded_into_memory.len());
+				bytes_loaded_into_memory.push(0xc3);
 			}
 		}
 	}
@@ -96,7 +120,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 			let symbol_name = symbol.name().expect("");
 			if symbol_name == func_name {
 				let addr = symbol.address() as usize;
-				let mut exec_page = ExecPage::new(16);
+				let mut exec_page = ExecPage::new(64);
 				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
 				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);
 				
