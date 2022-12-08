@@ -334,10 +334,12 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 		let num_bytes_so_far = num_bytes_fuzzed.load(Ordering::SeqCst);
 		
 		const BYTES_PER_KB : f64 = 1024.0;
+		const BYTES_PER_GB : f64 = 1024.0 * 1024.0 * 1024.0;
 		let avg_kb_per_sec = (num_bytes_so_far as f64) / (seconds_so_far as f64) / BYTES_PER_KB;
+		let num_gb_so_far = (num_bytes_so_far as f64) / BYTES_PER_GB;
 
-		print!("X86 | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed\n",
-			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec);
+		print!("X86 | {:10.1} sec uptime | {:10} cases | {:10.2} cps | {:5} bugs | {:8.3} KB/s code fuzzed | {:8.4} GB code total\n",
+			seconds_so_far, num_cases_so_far, avg_cases_per_second, num_bugs_so_far, avg_kb_per_sec, num_gb_so_far);
 	}
 }
 

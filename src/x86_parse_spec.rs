@@ -39,7 +39,7 @@ const MITIGATION_AVOID_PERMUTR2F : bool = false;
 const ADJUST_ALIGNR_MASK_ARG : bool = false;
 
 // MSVC doesn't have _mm_broadcastsi128_si256 ?
-const MITIGATION_AVOID_VPBROADCAST : bool = true;
+const MITIGATION_AVOID_VPBROADCAST : bool = false;
 
 fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	let mut disallowed_intrinsics = BTreeSet::<&'static str>::new();

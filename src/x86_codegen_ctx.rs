@@ -75,18 +75,20 @@ pub struct X86SIMDCodegenCtx {
 	pub type_to_ref_idx : HashMap<X86SIMDType, Vec<usize>>,
 	
 	// Some RNG state
-	rng : Rand
+	rng : Rand,
+	
+	reuse_node_idx_num : u32
 }
 
-const REUSE_NODE_IDX_DENOM : u32 = 6;
-const REUSE_NODE_IDX_NUM : u32 = 1;
+const DEFAULT_REUSE_NODE_IDX_DENOM : u32 = 64;
 
 impl X86SIMDCodegenCtx {
 	pub fn new(seed : u64) -> X86SIMDCodegenCtx {
 		X86SIMDCodegenCtx {
 			intrinsics_sequence: Vec::new(),
 			type_to_ref_idx: HashMap::new(),
-			rng: Rand::new(seed)
+			rng: Rand::new(seed),
+			reuse_node_idx_num: 1,
 		}
 	}
 	
@@ -94,7 +96,7 @@ impl X86SIMDCodegenCtx {
 		if let Some(ref_indices) = self.type_to_ref_idx.get(&ref_type) {
 			for ref_idx in ref_indices {
 				if *ref_idx > before_idx {
-					if (self.rng.rand() % REUSE_NODE_IDX_DENOM) < REUSE_NODE_IDX_NUM {
+					if (self.rng.rand() % DEFAULT_REUSE_NODE_IDX_DENOM) < self.reuse_node_idx_num {
 						return *ref_idx;
 					}
 				}
@@ -312,8 +314,10 @@ pub fn generate_x86_codegen_ctx(ctx : &mut X86SIMDCodegenCtx, intrinsics_by_type
 
 	let _ = ctx.get_ref_of_type(ending_type, 0);
 
-	let num_node_iterations : usize = 1000 + (ctx.rng.rand_size() % 1000);
+	let num_node_iterations : usize = 250 + (ctx.rng.rand_size() % 1000);
 	let chance_for_zero_node : f32 = match (ctx.rng.rand() % 4) { 0 => 0.0001, 1 => 0.001, 2 => 0.01, 3 => 0.02, _ => panic!("") };
+
+	ctx.reuse_node_idx_num = ctx.rng.rand() % DEFAULT_REUSE_NODE_IDX_DENOM;
 
 	for ii in 0..num_node_iterations {
 		if ii >= ctx.get_num_nodes() {
