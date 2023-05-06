@@ -57,13 +57,11 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 	// read stdin in the meantime, causing a deadlock.
 	// Writing from another thread ensures that stdout is being read
 	// at the same time, avoiding the problem.
-	{
-		let mut stdin = child.stdin.take().expect("Failed to open stdin");
-		let input = input.to_string();
-		std::thread::spawn(move || {
-			stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
-		});
-	}
+	let mut stdin = child.stdin.take().expect("Failed to open stdin");
+	let input = input.to_string();
+	let join_handle: std::thread::JoinHandle<_> = std::thread::spawn(move || {
+		stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
+	});
 	
 	//let compile_start = Instant::now();
 	//loop {
@@ -93,6 +91,8 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 
 	// TODO: Timeouts....gahhhh....
 	let output = child.wait_with_output().expect("could not read output of command");
+	
+	join_handle.join().expect("The thread being joined has panicked");
 	
 	if output.status.success() {
 		let proc_stdout = output.stdout;
