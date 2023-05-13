@@ -59,8 +59,7 @@ dependencies = [
 [[package]]
 name = "executable_memory"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579c0e8fdb041610f0160ee69e8bc4254b6e17c533f0cf330dfeff1bcb3d6a8f"
+source = "git+https://github.com/Benjins/rs-executable_memory.git?branch=bns-fix-virtual-mem-leak#1ec92ce3f5cc5de4d5bff84333ceaae9f3d66b26"
 dependencies = [
  "libc",
  "winapi",
