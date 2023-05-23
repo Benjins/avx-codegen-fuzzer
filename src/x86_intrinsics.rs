@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum X86BaseType {
 	Void,
@@ -128,3 +130,8 @@ pub fn get_underlying_simd_type(node_type : X86SIMDType) -> X86SIMDType {
 		node_type
 	}
 }
+
+// Helper for alignment sake...ugh
+#[repr(C, align(32))]
+#[derive(Clone, Debug)]
+pub struct AlignedWrapper<T : Copy + Clone + Debug>(pub T);

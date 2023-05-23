@@ -34,9 +34,9 @@ pub struct X86CodegenFuzzer {
 
 #[derive(Clone, Debug)]
 pub struct X86CodeFuzzerInputValues {
-	pub i_vals : Vec<i32>,
-	pub f_vals : Vec<f32>,
-	pub d_vals : Vec<f64>
+	pub i_vals : Vec<AlignedWrapper<i32>>,
+	pub f_vals : Vec<AlignedWrapper<f32>>,
+	pub d_vals : Vec<AlignedWrapper<f64>>
 }
 
 impl X86CodeFuzzerInputValues {
@@ -45,17 +45,17 @@ impl X86CodeFuzzerInputValues {
 
 		write!(out_str, "{}\n", self.i_vals.len()).expect("");
 		for i_val in self.i_vals.iter() {
-			write!(out_str, "{} ", i_val).expect("");
+			write!(out_str, "{} ", i_val.0).expect("");
 		}
 		
 		write!(out_str, "{}\n", self.f_vals.len()).expect("");
 		for f_val in self.f_vals.iter() {
-			write!(out_str, "{} ", f_val).expect("");
+			write!(out_str, "{} ", f_val.0).expect("");
 		}
 		
 		write!(out_str, "{}\n", self.d_vals.len()).expect("");
 		for d_val in self.d_vals.iter() {
-			write!(out_str, "{} ", d_val).expect("");
+			write!(out_str, "{} ", d_val.0).expect("");
 		}
 		
 		return out_str;
@@ -83,11 +83,17 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 		i_vals.push(rand_val);
 	}
 	
+	
 	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
 	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
 	
 	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
 	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
+
+	// Make aligned wrapper
+	let i_vals = i_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
+	let f_vals = f_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
+	let d_vals = d_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
 
 	return X86CodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
