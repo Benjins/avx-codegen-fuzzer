@@ -93,6 +93,9 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 		disallowed_intrinsics.insert("_mm256_testc_si256");
 		disallowed_intrinsics.insert("_mm_testnzc_si128");
 		disallowed_intrinsics.insert("_mm256_testnzc_si256");
+		disallowed_intrinsics.insert("_mm_test_mix_ones_zeros");
+		disallowed_intrinsics.insert("_mm256_test_mix_ones_zeros");
+		disallowed_intrinsics.insert("_mm_test_all_ones");
 	}
 
 	// These all seem to leave some of the destination register undefined
