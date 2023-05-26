@@ -45,6 +45,10 @@ const MITIGATION_AVOID_VPBROADCAST : bool = false;
 // so adding the option to remove these as a workaround until it's patched
 const MITIGATION_AVOID_8BIT_ABS : bool = false;
 
+// On GCC as of 13.1, there is some logic that incorrectly folds
+// VPAND and VPTEST when the carry bit is checked
+const MITIGATION_AVOID_TESTC : bool = false;
+
 fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	let mut disallowed_intrinsics = BTreeSet::<&'static str>::new();
 	
@@ -82,6 +86,11 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	if MITIGATION_AVOID_8BIT_ABS {
 		disallowed_intrinsics.insert("_mm_abs_epi8");
 		disallowed_intrinsics.insert("_mm256_abs_epi8");
+	}
+
+	if MITIGATION_AVOID_TESTC {
+		disallowed_intrinsics.insert("_mm_testc_si128");
+		disallowed_intrinsics.insert("_mm256_testc_si256");
 	}
 
 	// These all seem to leave some of the destination register undefined
