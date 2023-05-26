@@ -91,6 +91,8 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	if MITIGATION_AVOID_TESTC {
 		disallowed_intrinsics.insert("_mm_testc_si128");
 		disallowed_intrinsics.insert("_mm256_testc_si256");
+		disallowed_intrinsics.insert("_mm_testnzc_si128");
+		disallowed_intrinsics.insert("_mm256_testnzc_si256");
 	}
 
 	// These all seem to leave some of the destination register undefined
