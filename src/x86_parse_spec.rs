@@ -41,6 +41,10 @@ const ADJUST_ALIGNR_MASK_ARG : bool = false;
 // MSVC doesn't have _mm_broadcastsi128_si256 ?
 const MITIGATION_AVOID_VPBROADCAST : bool = false;
 
+// On GCC as of ~May 25, 2023, there is some logic that incorrectly folds vpblendvb and vpabsb,
+// so adding the option to remove these as a workaround until it's patched
+const MITIGATION_AVOID_8BIT_ABS : bool = false;
+
 fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	let mut disallowed_intrinsics = BTreeSet::<&'static str>::new();
 	
@@ -73,6 +77,11 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 
 	if MITIGATION_AVOID_PERMUTR2F {
 		disallowed_intrinsics.insert("_mm256_permute2f128_si256");
+	}
+
+	if MITIGATION_AVOID_8BIT_ABS {
+		disallowed_intrinsics.insert("_mm_abs_epi8");
+		disallowed_intrinsics.insert("_mm256_abs_epi8");
 	}
 
 	// These all seem to leave some of the destination register undefined
