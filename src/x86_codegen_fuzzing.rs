@@ -108,7 +108,7 @@ fn minimize_gen_x86_code<F: Fn(&X86CodegenFuzzer, &X86SIMDCodegenCtx) -> bool>(f
 		// and change all downstream references to something else
 		for ii in 1..best_ctx.get_num_nodes() {
 			if let Some(intrinsic_node) = best_ctx.maybe_get_produced_node(ii) {
-				print!("Trying to remove node {} {:?}\n", ii, intrinsic_node);
+				print!("Trying to remove node {}/{} {:?}\n", ii, best_ctx.get_num_nodes(), intrinsic_node);
 				let mut new_ctx = best_ctx.clone();
 				let return_type = intrinsic_node.intrinsic.return_type;
 				let mut can_replace_downstream_refs = true;
