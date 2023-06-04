@@ -47,6 +47,7 @@ const MITIGATION_AVOID_8BIT_ABS : bool = false;
 
 // On GCC as of 13.1, there is some logic that incorrectly folds
 // VPAND and VPTEST when the carry bit is checked
+// Fixed in 3635e8c67e13e3da7e1e23a617dd9952218e93e0
 const MITIGATION_AVOID_TESTC : bool = false;
 
 fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
