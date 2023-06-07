@@ -75,9 +75,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 
 		forbidden_sections
 	};
-	
-	//std::fs::write("latest_obj_file.obj", bin_data).expect("");
-	
+
+	std::fs::write("latest_obj_file.o", bin_data).expect("");
+
 	for section in obj_file.sections() {
 		let section_name = section.name();
 		if section.size() > 0 && (section_name.is_err() || !forbidden_sections.contains(section_name.unwrap())) {
@@ -118,10 +118,13 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	if let Some(section) = obj_file.section_by_name(".text") {
 		for symbol in obj_file.symbols() {
 			let symbol_name = symbol.name().expect("");
+			//println!("Symbol name {}", symbol_name);
 			if symbol_name == func_name {
 				let addr = symbol.address() as usize;
-				let mut exec_page = ExecPage::new(64);
+				let mut exec_page = ExecPage::new(8);
 				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
+				//println!("Bytes = {:02X?}", &bytes_loaded_into_memory[..]);
+				//println!("Func {} at offset {}", func_name, *text_offset_in_memory + addr);
 				exec_page.load_with_code(&bytes_loaded_into_memory[..], *text_offset_in_memory + addr);
 				
 				for (reloc_addr, reloc) in section.relocations() {
@@ -283,6 +286,8 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 					}
 					
 				}
+
+				//println!("{:?}")
 
 				return Some(exec_page);
 			}

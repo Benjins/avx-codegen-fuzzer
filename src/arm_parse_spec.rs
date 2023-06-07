@@ -11,6 +11,8 @@ const MITIGATION_AVOID_FP16 : bool = true;
 
 const MITIGATION_AVOID_BF16 : bool = true;
 
+const MITIGATION_AVOID_FLOATING_POINT : bool = true;
+
 // An issue with NVCAST not having all type combinations specified,
 // fixed in 830c18047bf8ce6d4d85345567847d344f97e975
 const MITIGATION_AVOID_REINTERPRET : bool = false;
@@ -316,6 +318,20 @@ pub fn parse_arm_intrinsics_json(spec_contents : &str, mitigations : &BTreeSet<S
 			if mitigations.contains("AVOID_POLY32") {
 				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly32)
 				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly32)) {
+					continue;
+				}
+			}
+
+			if mitigations.contains("AVOID_POLY16") {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly16)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly16)) {
+					continue;
+				}
+			}
+
+			if mitigations.contains("AVOID_POLY8") {
+				if is_arm_simd_type_base_type(ret_type, ARMBaseType::Poly8)
+				|| intrinsic_args.iter().any(|&arg| is_arm_simd_type_base_type(arg, ARMBaseType::Poly8)) {
 					continue;
 				}
 			}

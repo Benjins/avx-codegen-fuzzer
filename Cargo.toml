@@ -16,7 +16,7 @@ serde_json = "1.0"
 object = "0.28.3"
 
 # executable_memory has a virtual memory leak on Linux, so work around that for now
-executable_memory = { git = "https://github.com/Benjins/rs-executable_memory.git", branch = "bns-fix-virtual-mem-leak" }
+executable_memory = { git = "https://github.com/Benjins/rs-executable_memory.git", branch = "bns-16K-pages" }
 # Previously:
 #executable_memory = "0.1.2"
 

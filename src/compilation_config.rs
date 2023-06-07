@@ -91,7 +91,7 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 
 	// TODO: Timeouts....gahhhh....
 	let output = child.wait_with_output().expect("could not read output of command");
-	
+
 	join_handle.join().expect("The thread being joined has panicked");
 	
 	if output.status.success() {

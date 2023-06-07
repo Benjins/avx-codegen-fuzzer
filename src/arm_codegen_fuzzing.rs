@@ -18,6 +18,10 @@ use crate::exec_mem::ExecPage;
 
 use crate::code_exe_server_conn::{CodeExeAndInput, CodeExeServClient};
 
+// :(
+use crate::x86_intrinsics::AlignedWrapper;
+
+use std::arch::aarch64;
 
 // 192.168.86.153 for exe server
 
@@ -46,9 +50,9 @@ pub struct ARMCodegenFuzzer {
 
 #[derive(Clone, Debug)]
 pub struct ARMCodeFuzzerInputValues {
-	pub i_vals : Vec<i32>,
-	pub f_vals : Vec<f32>,
-	pub d_vals : Vec<f64>
+	pub i_vals : Vec<AlignedWrapper<i32>>,
+	pub f_vals : Vec<AlignedWrapper<f32>>,
+	pub d_vals : Vec<AlignedWrapper<f64>>
 }
 
 impl ARMCodeFuzzerInputValues {
@@ -57,17 +61,17 @@ impl ARMCodeFuzzerInputValues {
 
 		write!(out_str, "{}\n", self.i_vals.len()).expect("");
 		for i_val in self.i_vals.iter() {
-			write!(out_str, "{} ", i_val).expect("");
+			write!(out_str, "{} ", i_val.0).expect("");
 		}
 		
 		write!(out_str, "{}\n", self.f_vals.len()).expect("");
 		for f_val in self.f_vals.iter() {
-			write!(out_str, "{} ", f_val).expect("");
+			write!(out_str, "{} ", f_val.0).expect("");
 		}
 		
 		write!(out_str, "{}\n", self.d_vals.len()).expect("");
 		for d_val in self.d_vals.iter() {
-			write!(out_str, "{} ", d_val).expect("");
+			write!(out_str, "{} ", d_val.0).expect("");
 		}
 		
 		return out_str;
@@ -80,7 +84,7 @@ impl ARMCodeFuzzerInputValues {
 		let i_vals_iter = lines.nth(0).unwrap().split(' ');
 		let mut i_vals = Vec::with_capacity(num_i_vals);
 		for i_val in i_vals_iter {
-			i_vals.push(i_val.parse::<i32>().unwrap());
+			i_vals.push(AlignedWrapper(i_val.parse::<i32>().unwrap()));
 		}
 		
 		Self {
@@ -176,7 +180,7 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> ARMCodeFuzzerInputValues {
 	let mut rng = Rand::default();
 
-	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
+	let mut i_vals = Vec::<AlignedWrapper<i32>>::with_capacity(num_i_vals);
 	for _ in 0..num_i_vals {
 		let rand_val = match (rng.rand() % 16) {
 			0 =>  0,
@@ -185,14 +189,14 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 			3 => -1,
 			_ => rng.rand() as i32
 		};
-		i_vals.push(rand_val);
+		i_vals.push(AlignedWrapper(rand_val));
 	}
 	
-	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
-	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
+	let mut f_vals = Vec::<AlignedWrapper<f32>>::with_capacity(num_f_vals);
+	for _ in 0..num_f_vals { f_vals.push(AlignedWrapper(rng.randf() * 2.0 - 1.0)); }
 	
-	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
-	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
+	let mut d_vals = Vec::<AlignedWrapper<f64>>::with_capacity(num_d_vals);
+	for _ in 0..num_d_vals { d_vals.push(AlignedWrapper((rng.randf() * 2.0 - 1.0) as f64)); }
 
 	return ARMCodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
@@ -306,6 +310,43 @@ fn decode_return_type(return_type : u32) -> ARMSIMDType {
 	}
 }
 
+fn execute_simd_code_with_return_type<T>(exec_page : &ExecPage, input : &ARMCodeFuzzerInputValues) -> ARMSIMDOutputValues {
+	let func_ptr = unsafe { exec_page.page.as_ptr().add(exec_page.func_offset) };
+	let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> T = unsafe { std::mem::transmute(func_ptr) };
+
+	//println!("Exec page {:02X?}", exec_page);
+
+
+
+	let mut code_bytes = [0u8 ; 16];
+
+	unsafe {
+		std::ptr::copy_nonoverlapping(func as *const u8, code_bytes.as_mut_ptr(), 16);
+	}
+
+	//println!("Code bytes at {:?}: {:02X?}", func, code_bytes);
+
+	//println!("About to jump to {:?}", func);
+
+	let ret = unsafe {
+		func(input.i_vals.as_ptr(), input.f_vals.as_ptr(), input.d_vals.as_ptr())
+	};
+	//println!("Got value");
+
+	let value_size = core::mem::size_of::<T>();
+
+	let mut output_bytes = [0u8 ; 64];
+
+	unsafe {
+		std::ptr::copy_nonoverlapping(&ret as *const T as *const u8, output_bytes.as_mut_ptr(), value_size);
+	}
+
+	ARMSIMDOutputValues {
+		output_bytes : output_bytes,
+		output_len : value_size
+	}
+}
+
 impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues> for ARMCodegenFuzzer {
 	// Each of these will go on a thread, can contain inputs like
 	// a parsed spec data, seed, flags, config, etc.
@@ -319,7 +360,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 			all_intrinsic_return_types.push(*ret_type);
 		}
 
-		let needs_exe_server = (input_data.mode == GenCodeFuzzMode::CrashAndDiff);
+		let needs_exe_server = false;//(input_data.mode == GenCodeFuzzMode::CrashAndDiff);
 
 		ARMCodegenFuzzer {
 			type_to_intrinsics_map: input_data.type_to_intrinsics_map,
@@ -360,41 +401,128 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	// Actually execute it: this is probably like local, but 
 	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
 		
+		//dbg!(&code_meta.return_type);
+
+		//dbg!(execute_simd_code_with_return_type::<i8>(exec_page, input));
+
+		match code_meta.return_type {
+			ARMSIMDType::Primitive(ARMBaseType::Int8)  => { execute_simd_code_with_return_type::<i8>( exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::Int16) => { execute_simd_code_with_return_type::<i16>(exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::Int32) => { execute_simd_code_with_return_type::<i32>(exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::Int64) => { execute_simd_code_with_return_type::<i64>(exec_page, input) }
+
+			ARMSIMDType::Primitive(ARMBaseType::UInt8)  => { execute_simd_code_with_return_type::<u8>( exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::UInt16) => { execute_simd_code_with_return_type::<u16>(exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::UInt32) => { execute_simd_code_with_return_type::<u32>(exec_page, input) }
+			ARMSIMDType::Primitive(ARMBaseType::UInt64) => { execute_simd_code_with_return_type::<u64>(exec_page, input) }
+
+			ARMSIMDType::SIMD(ARMBaseType::Int8, 8)  => { execute_simd_code_with_return_type::<aarch64::int8x8_t>( exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int8, 16) => { execute_simd_code_with_return_type::<aarch64::int8x16_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int16, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int16, 8) => { execute_simd_code_with_return_type::<aarch64::int16x8_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int32, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int32, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int64, 1) => { execute_simd_code_with_return_type::<aarch64::int64x1_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::Int64, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2_t>(exec_page, input) }
+
+			ARMSIMDType::SIMD(ARMBaseType::UInt8, 8)  => { execute_simd_code_with_return_type::<aarch64::uint8x8_t>( exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt8, 16) => { execute_simd_code_with_return_type::<aarch64::uint8x16_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt16, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt16, 8) => { execute_simd_code_with_return_type::<aarch64::uint16x8_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt32, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt32, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt64, 1) => { execute_simd_code_with_return_type::<aarch64::uint64x1_t>(exec_page, input) }
+			ARMSIMDType::SIMD(ARMBaseType::UInt64, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2_t>(exec_page, input) }
+
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int8x8x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::int8x16x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x8x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x16x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int8x8x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::int8x16x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x8x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x16x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int8x8x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::int8x16x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x8x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x16x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int16x4x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int16x8x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x4x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x8x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int16x4x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int16x8x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x4x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x8x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int16x8x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x8x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int32x4x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x4x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int32x2x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int32x4x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x2x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x4x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int32x2x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x2x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::int64x1x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x1x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2x2_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::int64x1x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int64x2x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x1x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x2x3_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::int64x1x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int64x2x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x1x4_t>(exec_page, input) }
+			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x2x4_t>(exec_page, input) }
+
+
+
+			_ => panic!("unsupported return type {:?}", code_meta.return_type)
+		}
+
 		//let dbg_return_type = ARMSIMDType::SIMDArr(ARMBaseType::Poly8, 16, 2);
 		//println!("{:?} return type encoded as {}", dbg_return_type, encode_return_type(dbg_return_type));
 		
-		let encoded_return_type = encode_return_type(code_meta.return_type);
-		println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
-
-		let code_exe_and_input = CodeExeAndInput {
-			code_bytes: exec_page.get_bytes(),
-			func_offset: exec_page.get_func_offset() as u32,
-			i_vals: &input.i_vals[..],
-			f_vals: &input.f_vals[..],
-			d_vals: &input.d_vals[..],
-			return_type : encoded_return_type
-		};
-
-		let maybe_output = self.code_exe_serv.as_ref().unwrap().send_exe_and_input(&code_exe_and_input);
-		match maybe_output {
-			Ok(output_vec) => {
-				
-				assert!(output_vec.len() <= 64);
-				
-				let mut output_bytes = [0u8 ; 64];
-				
-				for (ii, val) in output_vec.iter().enumerate() {
-					output_bytes[ii] = *val;
-				}
-				
-				let actual_out = ARMSIMDOutputValues{ output_bytes: output_bytes, output_len: output_vec.len() };
-				//println!("woo hoo, we got an actual output {:?}", actual_out);
-				return actual_out;
-			}
-			Err(err) => {
-				panic!("Oh no, we got an IO error {}", err);
-			}
-		}
+		//let encoded_return_type = encode_return_type(code_meta.return_type);
+		//println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
+        //
+		//let code_exe_and_input = CodeExeAndInput {
+		//	code_bytes: exec_page.get_bytes(),
+		//	func_offset: exec_page.get_func_offset() as u32,
+		//	i_vals: &input.i_vals[..],
+		//	f_vals: &input.f_vals[..],
+		//	d_vals: &input.d_vals[..],
+		//	return_type : encoded_return_type
+		//};
+        //
+		//let maybe_output = self.code_exe_serv.as_ref().unwrap().send_exe_and_input(&code_exe_and_input);
+		//match maybe_output {
+		//	Ok(output_vec) => {
+		//
+		//		assert!(output_vec.len() <= 64);
+		//
+		//		let mut output_bytes = [0u8 ; 64];
+		//
+		//		for (ii, val) in output_vec.iter().enumerate() {
+		//			output_bytes[ii] = *val;
+		//		}
+		//
+		//		let actual_out = ARMSIMDOutputValues{ output_bytes: output_bytes, output_len: output_vec.len() };
+		//		//println!("woo hoo, we got an actual output {:?}", actual_out);
+		//		return actual_out;
+		//	}
+		//	Err(err) => {
+		//		panic!("Oh no, we got an IO error {}", err);
+		//	}
+		//}
 		
 	}
 

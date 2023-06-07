@@ -12,8 +12,9 @@ use crate::x86_intrinsics::AlignedWrapper;
 
 #[derive(Debug)]
 pub struct ExecPage {
-	page : ExecutableMemory,
-	func_offset : usize,
+	// TODO: See if this can be non-pub in some way for ARM
+	pub page : ExecutableMemory,
+	pub func_offset : usize,
 	code_size : usize
 }
 

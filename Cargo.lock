@@ -59,7 +59,7 @@ dependencies = [
 [[package]]
 name = "executable_memory"
 version = "0.1.2"
-source = "git+https://github.com/Benjins/rs-executable_memory.git?branch=bns-fix-virtual-mem-leak#1ec92ce3f5cc5de4d5bff84333ceaae9f3d66b26"
+source = "git+https://github.com/Benjins/rs-executable_memory.git?branch=bns-16K-pages#b2e969f4cc345a389a578b2a96e85ba8d606ff15"
 dependencies = [
  "libc",
  "winapi",
