@@ -563,7 +563,7 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	}
 
 	fn num_inputs_per_codegen(&self) -> u32 {
-		1
+		10*1000
 	}
 }
 

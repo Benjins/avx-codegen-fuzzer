@@ -63,6 +63,23 @@ const CHKSTK_WIN_BYTES : [u8 ; 78] = [
 	0xC3,                                                  //ret  
 ];
 
+#[cfg(target_arch = "aarch64")]
+const NO_OP_RETURN_BYTES : [u8 ; 4] = [
+	0xC0,
+	0x03,
+	0x5F,
+	0xD6
+];
+
+#[cfg(target_arch = "aarch64")]
+const NO_OP_BYTES : [u8 ; 4] = [
+	0x1F,
+	0x20,
+	0x03,
+	0xD5
+];
+
+
 pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let obj_file = object::File::parse(bin_data).expect("");
 	
@@ -95,6 +112,8 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 	let mut memset_file_offset : Option<usize> = None;
 	let mut chk_stk_file_offset : Option<usize> = None;
 	let mut chk_stk_fail_file_offset : Option<usize> = None;
+	let mut stack_chk_guard_file_offset : Option<usize> = None;
+	let mut stack_chk_fail_file_offset : Option<usize> = None;
 
 	#[cfg(target_os = "windows")]
 	{		
@@ -111,6 +130,25 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 			else if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_fail" {
 				chk_stk_fail_file_offset = Some(bytes_loaded_into_memory.len());
 				bytes_loaded_into_memory.push(0xc3);
+			}
+		}
+	}
+
+	// TODO: Honestly, we should be able to parse exe's for any arch/OS
+	// Just a question of what we run
+	#[cfg(target_os = "linux")]
+	{
+		//
+		for symbol in obj_file.symbols() {
+			if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_guard" {
+				align_vec(&mut bytes_loaded_into_memory, 4);
+				stack_chk_guard_file_offset = Some(bytes_loaded_into_memory.len());
+				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES[..]);
+			}
+			else if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_fail" {
+				align_vec(&mut bytes_loaded_into_memory, 4);
+				stack_chk_fail_file_offset = Some(bytes_loaded_into_memory.len());
+				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES[..]);
 			}
 		}
 	}
@@ -197,12 +235,24 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 							match reloc_target {
 								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
 									let target_symbol = obj_file.symbol_by_index(reloc_target_symbol_index).expect("bad symbol index");
-									let target_symbol_section = obj_file.section_by_index(target_symbol.section_index().unwrap()).expect("bad section index");
+									//dbg!(&target_symbol);
+
 
 									let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize) as i64;
-									let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_symbol_section.index()).unwrap();
-									let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64 + reloc.addend();
-									
+
+
+									let reloc_offset_in_memory  = if target_symbol.name() == Ok("__stack_chk_guard") {
+										stack_chk_guard_file_offset.unwrap() as i64
+									}
+									else {
+										let target_symbol_section = obj_file.section_by_index(target_symbol.section_index().unwrap()).expect("bad section index");
+
+										let reloc_section_offset_in_memory = section_to_memory_addr.get(&target_symbol_section.index()).unwrap();
+										let reloc_offset_in_memory = (reloc_section_offset_in_memory + target_symbol.address() as usize) as i64 + reloc.addend();
+
+										reloc_offset_in_memory
+									};
+
 									assert!(reloc.has_implicit_addend() == false);
 
 									// ADRP page upper bits
@@ -239,6 +289,30 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										
 										exec_page.fix_up_arm_add_immediate(reloc_insert_offset_in_memory as usize, reloc_offset_from_page_boundary as i32);
 									}
+									else if extra_data == 311 {
+										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory;
+										let reloc_relative_offset_in_pages = reloc_relative_offset >> 12;
+										// TODO: For now this is only for __stack_chk_guard, so no op anyway
+										//exec_page.fix_up_arm_adrp_redirect(reloc_insert_offset_in_memory as usize, reloc_relative_offset_in_pages as i32);
+
+										assert!(target_symbol.name() == Ok("__stack_chk_guard"));
+										let reloc_insert_offset_in_memory = reloc_insert_offset_in_memory as usize;
+										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+									}
+									else if extra_data == 312 {
+										assert!(reloc_offset_in_memory >= 0);
+										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
+										assert!(reloc_offset_from_page_boundary % 8 == 0);
+
+										// TODO: For now this is only for __stack_chk_guard, so no op anyway
+										//exec_page.fix_up_arm_add_immediate(reloc_insert_offset_in_memory as usize, reloc_offset_from_page_boundary as i32);
+
+										assert!(target_symbol.name() == Ok("__stack_chk_guard"));
+										let reloc_insert_offset_in_memory = reloc_insert_offset_in_memory as usize;
+										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+									}
 									else {
 										std::fs::write("arm_reloc_unknown.elf", bin_data).expect("failed to write file");
 										panic!("Unknown extra data {} in Elf arch-specific relocation", extra_data);
@@ -248,6 +322,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 							}
 						}
 						_ => {
+							//dbg!(&reloc);
 							let reloc_target = reloc.target();
 							match reloc_target {
 								object::read::RelocationTarget::Symbol(reloc_target_symbol_index) => {
@@ -263,6 +338,19 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 											let addend = reloc.addend();
 											let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory + addend;
 											exec_page.fix_up_redirect(reloc_insert_offset_in_memory as usize, reloc_size, reloc_relative_offset, reloc.has_implicit_addend());
+										}
+										else if encoding == object::RelocationEncoding::AArch64Call {
+											#[cfg(target_arch = "aarch64")]
+											{
+												let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize);
+												//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
+												(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+											}
+
+											#[cfg(not(target_arch = "aarch64"))]
+											{
+												panic!("Unexpected arch");
+											}
 										}
 										else {
 											panic!("bad relocation encoding");
