@@ -14,8 +14,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use std::arch::x86_64::{_rdtsc};
-
 use sha2::{Sha256, Digest};
 
 mod rand;
@@ -68,6 +66,12 @@ fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 	hasher.update(input);
 	let digest = hasher.finalize();
 	hex::encode(digest)
+}
+
+//use std::arch::x86_64::{_rdtsc};
+
+fn get_timestamp_for_seed() -> u64 {
+	Instant::now().elapsed().as_millis() as u64
 }
 
 fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeResult, metadata : &str) {
@@ -284,7 +288,7 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 	let num_bytes_fuzzed = Arc::new(AtomicUsize::new(0));
 	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
-	let initial_time = unsafe { _rdtsc() };
+	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
 	for thread_id in 0..num_threads {
 		let mut compilation_tests = compilation_tests.clone();
@@ -485,7 +489,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 	}
 	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
-	let initial_time = unsafe { _rdtsc() };
+	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
 	for thread_id in 0..num_threads {
 		let num_cases_state = num_cases_state.clone();
@@ -553,7 +557,7 @@ fn fuzz_loop_codegen(config_filename : &str, num_threads : u32) {
 	let compilation_tests = compilation_config.compilations;
 	let fuzz_mode = compilation_config.fuzz_mode;
 	
-	let initial_time = unsafe { _rdtsc() };
+	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
 	for thread_id in 0..num_threads {
 		let num_cases_state = num_cases_state.clone();
@@ -614,7 +618,7 @@ fn fuzz_asm_codegen(config_filename : &str, num_threads : u32) {
 	let compilation_tests = compilation_config.compilations;
 	let fuzz_mode = compilation_config.fuzz_mode;
 	
-	let initial_time = unsafe { _rdtsc() };
+	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 	for thread_id in 0..num_threads {

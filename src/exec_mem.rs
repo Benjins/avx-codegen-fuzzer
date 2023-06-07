@@ -4,8 +4,8 @@ use executable_memory::ExecutableMemory;
 
 use std::convert::TryInto;
 
-use core::arch::x86_64::__m256i;
-use core::arch::x86_64::__m128i;
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64::{__m128i, __m256i};
 
 // :(
 use crate::x86_intrinsics::AlignedWrapper;
@@ -77,6 +77,7 @@ impl ExecPage {
 		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
 	}
 	
+	#[cfg(target_arch = "x86_64")]
 	pub fn execute_with_args_256i(&self, i_vals: &[AlignedWrapper<i32>], f_vals: &[AlignedWrapper<f32>], d_vals: &[AlignedWrapper<f64>]) -> __m256i {
 		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
 		let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> __m256i = unsafe { std::mem::transmute(func_ptr) };
@@ -88,6 +89,7 @@ impl ExecPage {
 		return ret;
 	}
 
+	#[cfg(target_arch = "x86_64")]
 	pub fn execute_with_args_128i(&self, i_vals: &[AlignedWrapper<i32>], f_vals: &[AlignedWrapper<f32>], d_vals: &[AlignedWrapper<f64>]) -> __m128i {
 		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
 		let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> __m128i = unsafe { std::mem::transmute(func_ptr) };

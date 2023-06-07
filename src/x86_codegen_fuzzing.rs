@@ -211,18 +211,27 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 
 	// Actually execute it: this is probably like local, but 
 	fn execute(&self, exec_page : &ExecPage, code_meta: &Self::CodeMeta, input : &Self::FuzzerInput) -> Self::FuzzerOutput {
-		match code_meta.return_type {
-			X86SIMDType::M256i(_) => {
-				let ret = exec_page.execute_with_args_256i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
-				let bytes_256 : std::simd::u8x32 = ret.try_into().unwrap();
-				return Self::FuzzerOutput::SIMD256Bit(bytes_256);
-			},
-			X86SIMDType::M128i(_) => {
-				let ret = exec_page.execute_with_args_128i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
-				let bytes_128 : std::simd::u8x16 = ret.try_into().unwrap();
-				return Self::FuzzerOutput::SIMD128Bit(bytes_128);
-			},
-			_ => { panic!("Bad return type for simd"); }
+
+		#[cfg(target_arch = "x86_64")]
+		{
+			match code_meta.return_type {
+				X86SIMDType::M256i(_) => {
+					let ret = exec_page.execute_with_args_256i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
+					let bytes_256 : std::simd::u8x32 = ret.try_into().unwrap();
+					return Self::FuzzerOutput::SIMD256Bit(bytes_256);
+				},
+				X86SIMDType::M128i(_) => {
+					let ret = exec_page.execute_with_args_128i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
+					let bytes_128 : std::simd::u8x16 = ret.try_into().unwrap();
+					return Self::FuzzerOutput::SIMD128Bit(bytes_128);
+				},
+				_ => { panic!("Bad return type for simd"); }
+			}
+		}
+
+		#[cfg(not(target_arch = "x86_64"))]
+		{
+			panic!("Cannot execute X86 code natively on a non-X86 platform")
 		}
 	}
 

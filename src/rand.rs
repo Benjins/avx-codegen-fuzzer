@@ -1,7 +1,9 @@
 // Come on
 #![allow(unused_parens)]
 
-use std::arch::x86_64::{_rdtsc};
+//use std::arch::x86_64::{_rdtsc};
+
+use std::time::Instant;
 
 // Adapted from Xorshift-64
 // Found at https://github.com/jj1bdx/xorshiftplus-c/blob/master/xorshift64star.c
@@ -50,9 +52,14 @@ impl Rand{
 	}
 }
 
+// TODO: code dupe
+fn get_timestamp_for_seed() -> u64 {
+	Instant::now().elapsed().as_millis() as u64
+}
+
 impl Default for Rand {
 	fn default() -> Self {
-		let seed64 = unsafe { _rdtsc() };
+		let seed64 = get_timestamp_for_seed();//unsafe { _rdtsc() };
 		//println!("Thread {} rand seed {}", std::thread::current().id().as_u64(), seed64);
 		Rand::new( seed64 )
 	}

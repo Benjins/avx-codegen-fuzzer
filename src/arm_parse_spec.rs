@@ -7,9 +7,9 @@ use crate::arm_intrinsics::*;
 
 use std::collections::BTreeSet;
 
-const MITIGATION_AVOID_FP16 : bool = false;
+const MITIGATION_AVOID_FP16 : bool = true;
 
-const MITIGATION_AVOID_BF16 : bool = false;
+const MITIGATION_AVOID_BF16 : bool = true;
 
 // An issue with NVCAST not having all type combinations specified,
 // fixed in 830c18047bf8ce6d4d85345567847d344f97e975
