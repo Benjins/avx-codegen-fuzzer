@@ -298,7 +298,11 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										assert!(target_symbol.name() == Ok("__stack_chk_guard"));
 										let reloc_insert_offset_in_memory = reloc_insert_offset_in_memory as usize;
 										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
+
+										// TODO: HACK: FIXME: Blergh
 										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..]);
 									}
 									else if extra_data == 312 {
 										assert!(reloc_offset_in_memory >= 0);
@@ -311,7 +315,11 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										assert!(target_symbol.name() == Ok("__stack_chk_guard"));
 										let reloc_insert_offset_in_memory = reloc_insert_offset_in_memory as usize;
 										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
+
+										// TODO: HACK: FIXME: Blergh
 										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
+										(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..])
 									}
 									else {
 										std::fs::write("arm_reloc_unknown.elf", bin_data).expect("failed to write file");
