@@ -43,6 +43,7 @@ const MITIGATION_AVOID_VPBROADCAST : bool = false;
 
 // On GCC as of ~May 25, 2023, there is some logic that incorrectly folds vpblendvb and vpabsb,
 // so adding the option to remove these as a workaround until it's patched
+// Fixed in 07b86ab138bf8be8cb331015cd2b9775c6856ac6
 const MITIGATION_AVOID_8BIT_ABS : bool = false;
 
 // On GCC as of 13.1, there is some logic that incorrectly folds
