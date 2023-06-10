@@ -367,7 +367,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 											{
 												let reloc_insert_offset_in_memory = (text_offset_in_memory + reloc_addr as usize);
 												//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
-												(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+												(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
 											}
 
 											#[cfg(not(target_arch = "aarch64"))]
