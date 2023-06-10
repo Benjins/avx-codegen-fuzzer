@@ -385,6 +385,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 
 				//println!("{:?}")
 
+				// TODO: also call mprotect to prevent further writes, maybe a whole separate type?
+				exec_page.flush_cache();
+
 				return Some(exec_page);
 			}
 		}

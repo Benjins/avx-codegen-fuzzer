@@ -20,4 +20,6 @@ executable_memory = { git = "https://github.com/Benjins/rs-executable_memory.git
 # Previously:
 #executable_memory = "0.1.2"
 
+libc = "0.2.0"
+
 # goblin = "0.5.1"

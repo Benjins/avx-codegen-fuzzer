@@ -2,6 +2,8 @@
 
 use executable_memory::ExecutableMemory;
 
+use libc;
+
 use std::convert::TryInto;
 
 #[cfg(target_arch = "x86_64")]
@@ -77,6 +79,18 @@ impl ExecPage {
 		let new_value_bytes = new_value_int.to_le_bytes();
 		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
 	}
+
+	pub fn flush_cache(&self) {
+		#[cfg(target_arch = "aarch64")]
+		{
+			unsafe {
+				let begin_ptr = self.page.as_ptr() as *mut libc::c_void;
+				let end_ptr = self.page.as_ptr().offset(self.page.len() as isize) as *mut libc::c_void;
+
+				__aarch64_sync_cache_range(begin_ptr, end_ptr);
+			}
+		}
+	}
 	
 	#[cfg(target_arch = "x86_64")]
 	pub fn execute_with_args_256i(&self, i_vals: &[AlignedWrapper<i32>], f_vals: &[AlignedWrapper<f32>], d_vals: &[AlignedWrapper<f64>]) -> __m256i {
@@ -128,3 +142,53 @@ impl ExecPage {
 		return self.func_offset;
 	}
 }
+
+
+
+//---------------------------------------------------------------------------------------
+// Code ported from https://gcc.gnu.org/git/?p=gcc.git;a=blob;f=libgcc/config/aarch64/sync-cache.c;h=41151e861d7fc32a77772b7f09b5f88779cbfd4c#l32
+
+#[cfg(target_arch = "aarch64")]
+const CTR_IDC_SHIFT : usize = 28;
+
+#[cfg(target_arch = "aarch64")]
+const CTR_DIC_SHIFT : usize = 29;
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn __aarch64_sync_cache_range(base : *mut libc::c_void, end : *mut libc::c_void) {
+
+    let mut cache_info : usize = 0;
+    core::arch::asm!("mrs {}, ctr_el0", out(reg) cache_info);
+
+    let icache_lsize = 4 << (cache_info & 0xF);
+    let dcache_lsize = 4 << ((cache_info >> 16) & 0xF);
+
+    let base = base as usize;
+    let end = end as usize;
+
+    if ((cache_info >> CTR_IDC_SHIFT) & 0x1) == 0x0 {
+        let mut addr = base & !(dcache_lsize - 1);
+        while addr < end {
+
+            core::arch::asm! ("dc cvau, {}", in(reg) addr);
+
+            addr += dcache_lsize;
+        }
+    }
+
+    core::arch::asm! ("dsb ish");
+
+    if ((cache_info >> CTR_DIC_SHIFT) & 0x1) == 0x0 {
+        let mut addr = base & !(icache_lsize - 1);
+        while addr < end {
+
+            core::arch::asm! ("ic ivau, {}", in(reg) addr);
+
+            addr += icache_lsize;
+        }
+    }
+
+    core::arch::asm! ("isb");
+}
+//---------------------------------------------------------------------------------------
+

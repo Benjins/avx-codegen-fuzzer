@@ -188,6 +188,7 @@ version = "0.1.0"
 dependencies = [
  "executable_memory",
  "hex",
+ "libc",
  "object",
  "roxmltree",
  "serde_json",
