@@ -3,7 +3,7 @@
 
 //use std::arch::x86_64::{_rdtsc};
 
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 // Adapted from Xorshift-64
 // Found at https://github.com/jj1bdx/xorshiftplus-c/blob/master/xorshift64star.c
@@ -54,12 +54,13 @@ impl Rand{
 
 // TODO: code dupe
 fn get_timestamp_for_seed() -> u64 {
-	Instant::now().elapsed().as_millis() as u64
+	SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as u64
 }
 
 impl Default for Rand {
 	fn default() -> Self {
 		let seed64 = get_timestamp_for_seed();//unsafe { _rdtsc() };
+		//dbg!(seed64);
 		//println!("Thread {} rand seed {}", std::thread::current().id().as_u64(), seed64);
 		Rand::new( seed64 )
 	}

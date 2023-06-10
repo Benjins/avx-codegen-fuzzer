@@ -50,9 +50,11 @@ pub struct ARMCodegenFuzzer {
 
 #[derive(Clone, Debug)]
 pub struct ARMCodeFuzzerInputValues {
-	pub i_vals : Vec<AlignedWrapper<i32>>,
-	pub f_vals : Vec<AlignedWrapper<f32>>,
-	pub d_vals : Vec<AlignedWrapper<f64>>
+	pub i_vals : Vec<i32>,
+	pub f_vals : Vec<f32>,
+	pub d_vals : Vec<f64>
+
+	// TODO: Use Layout::from_size_align and std::alloc::alloc to make aligned memory
 }
 
 impl ARMCodeFuzzerInputValues {
@@ -61,17 +63,17 @@ impl ARMCodeFuzzerInputValues {
 
 		write!(out_str, "{}\n", self.i_vals.len()).expect("");
 		for i_val in self.i_vals.iter() {
-			write!(out_str, "{} ", i_val.0).expect("");
+			write!(out_str, "{} ", i_val).expect("");
 		}
 		
-		write!(out_str, "{}\n", self.f_vals.len()).expect("");
+		write!(out_str, "\n{}\n", self.f_vals.len()).expect("");
 		for f_val in self.f_vals.iter() {
-			write!(out_str, "{} ", f_val.0).expect("");
+			write!(out_str, "{} ", f_val).expect("");
 		}
 		
 		write!(out_str, "{}\n", self.d_vals.len()).expect("");
 		for d_val in self.d_vals.iter() {
-			write!(out_str, "{} ", d_val.0).expect("");
+			write!(out_str, "{} ", d_val).expect("");
 		}
 		
 		return out_str;
@@ -84,7 +86,7 @@ impl ARMCodeFuzzerInputValues {
 		let i_vals_iter = lines.nth(0).unwrap().split(' ');
 		let mut i_vals = Vec::with_capacity(num_i_vals);
 		for i_val in i_vals_iter {
-			i_vals.push(AlignedWrapper(i_val.parse::<i32>().unwrap()));
+			i_vals.push(i_val.parse::<i32>().unwrap());
 		}
 		
 		Self {
@@ -114,7 +116,7 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 		// and change all downstream references to something else
 		for ii in 1..best_ctx.get_num_nodes() {
 			if let Some(intrinsic_node) = best_ctx.maybe_get_produced_node(ii) {
-				print!("Trying to remove node {} {:?}\n", ii, intrinsic_node);
+				print!("Trying to remove node {}/{} {:?}\n", ii, best_ctx.get_num_nodes(), intrinsic_node);
 				let mut new_ctx = best_ctx.clone();
 				let return_type = intrinsic_node.intrinsic.return_type;
 				let mut can_replace_downstream_refs = true;
@@ -180,7 +182,7 @@ fn minimize_gen_arm_code<F: Fn(&ARMCodegenFuzzer, &ARMSIMDCodegenCtx) -> bool>(f
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> ARMCodeFuzzerInputValues {
 	let mut rng = Rand::default();
 
-	let mut i_vals = Vec::<AlignedWrapper<i32>>::with_capacity(num_i_vals);
+	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
 	for _ in 0..num_i_vals {
 		let rand_val = match (rng.rand() % 16) {
 			0 =>  0,
@@ -189,14 +191,14 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 			3 => -1,
 			_ => rng.rand() as i32
 		};
-		i_vals.push(AlignedWrapper(rand_val));
+		i_vals.push(rand_val);
 	}
 	
-	let mut f_vals = Vec::<AlignedWrapper<f32>>::with_capacity(num_f_vals);
-	for _ in 0..num_f_vals { f_vals.push(AlignedWrapper(rng.randf() * 2.0 - 1.0)); }
+	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
+	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
 	
-	let mut d_vals = Vec::<AlignedWrapper<f64>>::with_capacity(num_d_vals);
-	for _ in 0..num_d_vals { d_vals.push(AlignedWrapper((rng.randf() * 2.0 - 1.0) as f64)); }
+	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
+	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
 
 	return ARMCodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
@@ -310,28 +312,15 @@ fn decode_return_type(return_type : u32) -> ARMSIMDType {
 	}
 }
 
-fn execute_simd_code_with_return_type<T>(exec_page : &ExecPage, input : &ARMCodeFuzzerInputValues) -> ARMSIMDOutputValues {
+fn execute_simd_code_with_return_type<T : std::fmt::Debug>(exec_page : &ExecPage, input : &ARMCodeFuzzerInputValues) -> ARMSIMDOutputValues {
+
+	// Get the function, casting to proper return type
 	let func_ptr = unsafe { exec_page.page.as_ptr().add(exec_page.func_offset) };
-	let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> T = unsafe { std::mem::transmute(func_ptr) };
-
-	//println!("Exec page {:02X?}", exec_page);
-
-
-
-	let mut code_bytes = [0u8 ; 16];
-
-	unsafe {
-		std::ptr::copy_nonoverlapping(func as *const u8, code_bytes.as_mut_ptr(), 16);
-	}
-
-	//println!("Code bytes at {:?}: {:02X?}", func, code_bytes);
-
-	//println!("About to jump to {:?}", func);
+	let func: unsafe extern "C" fn(*const i32, *const f32, *const f64) -> T = unsafe { std::mem::transmute(func_ptr) };
 
 	let ret = unsafe {
 		func(input.i_vals.as_ptr(), input.f_vals.as_ptr(), input.d_vals.as_ptr())
 	};
-	//println!("Got value");
 
 	let value_size = core::mem::size_of::<T>();
 
@@ -544,17 +533,23 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	}
 	
 	fn save_meta_to_string(&self, meta: &Self::CodeMeta) -> String {
+
 		format!("{} {} {} {}", meta.num_i_vals, meta.num_f_vals, meta.num_d_vals, encode_return_type(meta.return_type))
 	}
 
 	fn read_meta_from_string(&self, serial: &str) -> Self::CodeMeta {
-		let mut parts = serial.split(' ');
-		
+		let mut parts = serial.trim().split(' ');
+
+		let num_i_vals = parts.next().unwrap();
+		let num_f_vals = parts.next().unwrap();
+		let num_d_vals = parts.next().unwrap();
+		let return_type = parts.next().unwrap();
+
 		let ret = ARMCodegenFuzzerCodeMetadata {
-			num_i_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
-			num_f_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
-			num_d_vals : parts.nth(0).unwrap().parse::<usize>().unwrap(),
-			return_type : decode_return_type(parts.nth(0).unwrap().parse::<u32>().unwrap())
+			num_i_vals : num_i_vals.parse::<usize>().unwrap(),
+			num_f_vals : num_f_vals.parse::<usize>().unwrap(),
+			num_d_vals : num_d_vals.parse::<usize>().unwrap(),
+			return_type : decode_return_type(return_type.parse::<u32>().unwrap())
 		};
 		
 		println!("Got meta {:?}", ret);

@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use sha2::{Sha256, Digest};
 
@@ -71,7 +71,7 @@ fn get_hex_hash_of_bytes(input : &[u8]) -> String {
 //use std::arch::x86_64::{_rdtsc};
 
 fn get_timestamp_for_seed() -> u64 {
-	Instant::now().elapsed().as_millis() as u64
+	SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeResult, metadata : &str) {
@@ -223,12 +223,14 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 						
 						let input_str = fuzzer.save_input_to_string(&bad_input);
 						if let Some(min_ctx) = fuzzer.try_minimize(codegen_ctx, minim_checker) {
-							let (min_cpp_code,_) = fuzzer.generate_cpp_code(&min_ctx);
-							save_out_failure_info(&cpp_code, &min_cpp_code, &GenCodeResult::RuntimeDiff(input_str), ""); // TODO
+							let (min_cpp_code, min_meta) = fuzzer.generate_cpp_code(&min_ctx);
+							let min_meta = fuzzer.save_meta_to_string(&min_meta);
+							save_out_failure_info(&cpp_code, &min_cpp_code, &GenCodeResult::RuntimeDiff(input_str), &min_meta);
 						}
 						else {
 							println!("Could not minimize for whatever reason");
-							save_out_failure_info(&cpp_code, &cpp_code, &GenCodeResult::RuntimeDiff(input_str), ""); // TODO
+							let code_meta = fuzzer.save_meta_to_string(&code_meta);
+							save_out_failure_info(&cpp_code, &cpp_code, &GenCodeResult::RuntimeDiff(input_str), &code_meta);
 						}
 						
 						total_bugs_found.fetch_add(1, Ordering::SeqCst);
@@ -406,9 +408,15 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 
 			let mut all_outputs_same = true;
 			let mut first_output : Option<ARMSIMDOutputValues> = None;
-			for compiled_out in compiled_outputs.iter(){
+			for compiled_out in compiled_outputs.iter() {
+
+
+
 				let output = fuzzer.execute(&compiled_out.code_page, &code_meta, &input);
 				if let Some(ref first_output) = first_output {
+
+					std::fs::write("compiled_flat_code.bin", &compiled_out.code_page.page[..]).expect("Couldn't dump flat code binary");
+
 					if !fuzzer.are_outputs_the_same(first_output, &output) {
 						println!("output1 = {:?}", first_output);
 						println!("output2 = {:?}", output);

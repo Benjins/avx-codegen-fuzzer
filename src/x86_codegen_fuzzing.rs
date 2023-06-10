@@ -15,6 +15,7 @@ use crate::x86_intrinsics::*;
 
 use crate::exec_mem::ExecPage;
 
+#[derive(Clone, Debug)]
 pub struct X86CodegenFuzzerCodeMetadata {
 	num_i_vals : usize,
 	num_f_vals : usize,
@@ -255,8 +256,9 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 		todo!()
 	}
 
-	fn save_meta_to_string(&self, _meta: &Self::CodeMeta) -> String {
-		todo!()
+	fn save_meta_to_string(&self, meta: &Self::CodeMeta) -> String {
+		// TODO: More elegant solution, but for now just make sure there's something
+		format!("{:?}", meta)
 	}
 
 	fn read_meta_from_string(&self, _serial: &str) -> Self::CodeMeta {
