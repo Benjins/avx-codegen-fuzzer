@@ -258,8 +258,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 									// ADRP page upper bits
 									if extra_data == 275 {
 										//let addend = ;
-										let reloc_relative_offset = reloc_offset_in_memory - reloc_insert_offset_in_memory;
-										let reloc_relative_offset_in_pages = reloc_relative_offset >> 12;
+										let reloc_relative_offset_in_pages = (reloc_offset_in_memory >> 12) - (reloc_insert_offset_in_memory >> 12);
 										exec_page.fix_up_arm_adrp_redirect(reloc_insert_offset_in_memory as usize, reloc_relative_offset_in_pages as i32);
 									}
 									// LDR offset

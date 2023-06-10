@@ -340,10 +340,6 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 	// Each of these will go on a thread, can contain inputs like
 	// a parsed spec data, seed, flags, config, etc.
 	fn new_fuzzer_state(input_data : Self::ThreadInput) -> Self {
-		
-		// poly8x16x2_t
-		//dbg!(encode_return_type(ARMSIMDType::SIMDArr(ARMBaseType::Poly8, 16, 2)));
-		
 		let mut all_intrinsic_return_types = Vec::new();
 		for (ret_type, _) in input_data.type_to_intrinsics_map.iter() {
 			all_intrinsic_return_types.push(*ret_type);

@@ -51,10 +51,20 @@ impl ExecPage {
 		self.page[write_offset..write_offset+write_len_bytes].clone_from_slice(&new_value_bytes[..write_len_bytes]);
 	}
 	
+	// See https://developer.arm.com/documentation/ddi0596/2021-12/Base-Instructions/ADRP--Form-PC-relative-address-to-4KB-page-?lang=en
 	pub fn fix_up_arm_adrp_redirect(&mut self, write_offset : usize, value : i32) {
 		let current_value_bytes = &self.page[write_offset..write_offset+4];
 		let current_value_int = i32::from_le_bytes(current_value_bytes.try_into().expect(""));
-		let new_value_int = current_value_int | (value << 3);
+
+		let imm_lo = (value & 0x03); // bits [0:1]
+		let imm_hi = ((value >> 2) & ((1 << 17) - 1)) as usize; // bits [2:19]
+
+		let imm_lo_positioned = ((imm_lo as u32) << 29) as i32;
+
+		// TODO:
+		assert!(imm_hi == 0);
+
+		let new_value_int = current_value_int | imm_lo_positioned;
 		
 		let new_value_bytes = new_value_int.to_le_bytes();
 		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
