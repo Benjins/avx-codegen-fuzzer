@@ -313,7 +313,7 @@ fn decode_return_type(return_type : u32) -> ARMSIMDType {
 	}
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "aarch64")]
 fn execute_simd_code_with_return_type<T : std::fmt::Debug>(exec_page : &ExecPage, input : &ARMCodeFuzzerInputValues) -> ARMSIMDOutputValues {
 
 	// Get the function, casting to proper return type
