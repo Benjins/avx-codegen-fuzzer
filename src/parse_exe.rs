@@ -64,7 +64,7 @@ const CHKSTK_WIN_BYTES : [u8 ; 78] = [
 ];
 
 #[cfg(target_arch = "aarch64")]
-const NO_OP_RETURN_BYTES : [u8 ; 4] = [
+const NO_OP_RETURN_BYTES_ARM : [u8 ; 4] = [
 	0xC0,
 	0x03,
 	0x5F,
@@ -72,7 +72,7 @@ const NO_OP_RETURN_BYTES : [u8 ; 4] = [
 ];
 
 #[cfg(target_arch = "aarch64")]
-const NO_OP_BYTES : [u8 ; 4] = [
+const NO_OP_BYTES_ARM : [u8 ; 4] = [
 	0x1F,
 	0x20,
 	0x03,
@@ -136,19 +136,19 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 
 	// TODO: Honestly, we should be able to parse exe's for any arch/OS
 	// Just a question of what we run
-	#[cfg(target_os = "linux")]
+	#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 	{
 		//
 		for symbol in obj_file.symbols() {
 			if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_guard" {
 				align_vec(&mut bytes_loaded_into_memory, 4);
 				stack_chk_guard_file_offset = Some(bytes_loaded_into_memory.len());
-				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES[..]);
+				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES_ARM[..]);
 			}
 			else if chk_stk_fail_file_offset.is_none() && symbol.name().expect("") == "__stack_chk_fail" {
 				align_vec(&mut bytes_loaded_into_memory, 4);
 				stack_chk_fail_file_offset = Some(bytes_loaded_into_memory.len());
-				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES[..]);
+				bytes_loaded_into_memory.extend_from_slice(&NO_OP_RETURN_BYTES_ARM[..]);
 			}
 		}
 	}
@@ -299,9 +299,17 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
 
 										// TODO: HACK: FIXME: Blergh
-										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
-										(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
-										(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..]);
+										#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+										{
+											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..]);
+										}
+										
+										#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+										{
+											todo!();
+										}
 									}
 									else if extra_data == 312 {
 										assert!(reloc_offset_in_memory >= 0);
@@ -316,9 +324,17 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										//println!("Setting this to No-op: {:02X?}", &exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]);
 
 										// TODO: HACK: FIXME: Blergh
-										(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
-										(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
-										(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..])
+										#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+										{
+											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..])
+										}
+										
+										#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
+										{
+											todo!();
+										}
 									}
 									else {
 										std::fs::write("arm_reloc_unknown.elf", bin_data).expect("failed to write file");

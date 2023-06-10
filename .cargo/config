@@ -1,4 +1,5 @@
 
-[target.x86_64]
-rustflags = "-C target-feature=+avx2"
+# TODO: Can there be per-platform rustflags overrides?
+[build]
+rustflags = "-C target-cpu=native"
 

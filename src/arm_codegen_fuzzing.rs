@@ -21,6 +21,7 @@ use crate::code_exe_server_conn::{CodeExeAndInput, CodeExeServClient};
 // :(
 use crate::x86_intrinsics::AlignedWrapper;
 
+#[cfg(target_arch = "aarch64")]
 use std::arch::aarch64;
 
 // 192.168.86.153 for exe server
@@ -312,6 +313,7 @@ fn decode_return_type(return_type : u32) -> ARMSIMDType {
 	}
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 fn execute_simd_code_with_return_type<T : std::fmt::Debug>(exec_page : &ExecPage, input : &ARMCodeFuzzerInputValues) -> ARMSIMDOutputValues {
 
 	// Get the function, casting to proper return type
@@ -389,126 +391,95 @@ impl CodegenFuzzer<ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuz
 		//dbg!(&code_meta.return_type);
 
 		//dbg!(execute_simd_code_with_return_type::<i8>(exec_page, input));
+		
+		#[cfg(target_arch = "aarch64")]
+		{
+			match code_meta.return_type {
+				ARMSIMDType::Primitive(ARMBaseType::Int8)  => { execute_simd_code_with_return_type::<i8>( exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::Int16) => { execute_simd_code_with_return_type::<i16>(exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::Int32) => { execute_simd_code_with_return_type::<i32>(exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::Int64) => { execute_simd_code_with_return_type::<i64>(exec_page, input) }
 
-		match code_meta.return_type {
-			ARMSIMDType::Primitive(ARMBaseType::Int8)  => { execute_simd_code_with_return_type::<i8>( exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::Int16) => { execute_simd_code_with_return_type::<i16>(exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::Int32) => { execute_simd_code_with_return_type::<i32>(exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::Int64) => { execute_simd_code_with_return_type::<i64>(exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::UInt8)  => { execute_simd_code_with_return_type::<u8>( exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::UInt16) => { execute_simd_code_with_return_type::<u16>(exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::UInt32) => { execute_simd_code_with_return_type::<u32>(exec_page, input) }
+				ARMSIMDType::Primitive(ARMBaseType::UInt64) => { execute_simd_code_with_return_type::<u64>(exec_page, input) }
 
-			ARMSIMDType::Primitive(ARMBaseType::UInt8)  => { execute_simd_code_with_return_type::<u8>( exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::UInt16) => { execute_simd_code_with_return_type::<u16>(exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::UInt32) => { execute_simd_code_with_return_type::<u32>(exec_page, input) }
-			ARMSIMDType::Primitive(ARMBaseType::UInt64) => { execute_simd_code_with_return_type::<u64>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int8, 8)  => { execute_simd_code_with_return_type::<aarch64::int8x8_t>( exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int8, 16) => { execute_simd_code_with_return_type::<aarch64::int8x16_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int16, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int16, 8) => { execute_simd_code_with_return_type::<aarch64::int16x8_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int32, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int32, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int64, 1) => { execute_simd_code_with_return_type::<aarch64::int64x1_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::Int64, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2_t>(exec_page, input) }
 
-			ARMSIMDType::SIMD(ARMBaseType::Int8, 8)  => { execute_simd_code_with_return_type::<aarch64::int8x8_t>( exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int8, 16) => { execute_simd_code_with_return_type::<aarch64::int8x16_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int16, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int16, 8) => { execute_simd_code_with_return_type::<aarch64::int16x8_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int32, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int32, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int64, 1) => { execute_simd_code_with_return_type::<aarch64::int64x1_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::Int64, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt8, 8)  => { execute_simd_code_with_return_type::<aarch64::uint8x8_t>( exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt8, 16) => { execute_simd_code_with_return_type::<aarch64::uint8x16_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt16, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt16, 8) => { execute_simd_code_with_return_type::<aarch64::uint16x8_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt32, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt32, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt64, 1) => { execute_simd_code_with_return_type::<aarch64::uint64x1_t>(exec_page, input) }
+				ARMSIMDType::SIMD(ARMBaseType::UInt64, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2_t>(exec_page, input) }
 
-			ARMSIMDType::SIMD(ARMBaseType::UInt8, 8)  => { execute_simd_code_with_return_type::<aarch64::uint8x8_t>( exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt8, 16) => { execute_simd_code_with_return_type::<aarch64::uint8x16_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt16, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt16, 8) => { execute_simd_code_with_return_type::<aarch64::uint16x8_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt32, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt32, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt64, 1) => { execute_simd_code_with_return_type::<aarch64::uint64x1_t>(exec_page, input) }
-			ARMSIMDType::SIMD(ARMBaseType::UInt64, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int8x8x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::int8x16x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x8x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x16x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int8x8x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::int8x16x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x8x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x16x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int8x8x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::int8x16x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x8x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x16x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int16x4x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int16x8x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x4x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x8x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int16x4x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int16x8x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x4x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x8x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int16x8x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x8x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int32x4x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x4x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int32x2x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int32x4x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x2x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x4x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int32x2x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x2x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::int64x1x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x1x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2x2_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::int64x1x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int64x2x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x1x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x2x3_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::int64x1x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int64x2x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x1x4_t>(exec_page, input) }
+				ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x2x4_t>(exec_page, input) }
 
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int8x8x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::int8x16x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x8x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 2) => { execute_simd_code_with_return_type::<aarch64::uint8x16x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int8x8x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::int8x16x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x8x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 3) => { execute_simd_code_with_return_type::<aarch64::uint8x16x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int8x8x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::int8x16x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x8x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt8,  16, 4) => { execute_simd_code_with_return_type::<aarch64::uint8x16x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int16x4x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::int16x8x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x4x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 2) => { execute_simd_code_with_return_type::<aarch64::uint16x8x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int16x4x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::int16x8x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x4x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 3) => { execute_simd_code_with_return_type::<aarch64::uint16x8x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int16x4x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::int16x8x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x4x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt16,  8, 4) => { execute_simd_code_with_return_type::<aarch64::uint16x8x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int32x2x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::int32x4x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x2x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 2) => { execute_simd_code_with_return_type::<aarch64::uint32x4x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int32x2x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::int32x4x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x2x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 3) => { execute_simd_code_with_return_type::<aarch64::uint32x4x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int32x2x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::int32x4x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x2x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt32,  4, 4) => { execute_simd_code_with_return_type::<aarch64::uint32x4x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::int64x1x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::int64x2x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x1x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 2) => { execute_simd_code_with_return_type::<aarch64::uint64x2x2_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::int64x1x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::int64x2x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x1x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 3) => { execute_simd_code_with_return_type::<aarch64::uint64x2x3_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::int64x1x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::Int64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::int64x2x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  1, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x1x4_t>(exec_page, input) }
-			ARMSIMDType::SIMDArr(ARMBaseType::UInt64,  2, 4) => { execute_simd_code_with_return_type::<aarch64::uint64x2x4_t>(exec_page, input) }
-
-
-
-			_ => panic!("unsupported return type {:?}", code_meta.return_type)
+				_ => panic!("unsupported return type {:?}", code_meta.return_type)
+			}
 		}
-
-		//let dbg_return_type = ARMSIMDType::SIMDArr(ARMBaseType::Poly8, 16, 2);
-		//println!("{:?} return type encoded as {}", dbg_return_type, encode_return_type(dbg_return_type));
 		
-		//let encoded_return_type = encode_return_type(code_meta.return_type);
-		//println!("{:?} return type encoded as {}", code_meta.return_type, encoded_return_type);
-        //
-		//let code_exe_and_input = CodeExeAndInput {
-		//	code_bytes: exec_page.get_bytes(),
-		//	func_offset: exec_page.get_func_offset() as u32,
-		//	i_vals: &input.i_vals[..],
-		//	f_vals: &input.f_vals[..],
-		//	d_vals: &input.d_vals[..],
-		//	return_type : encoded_return_type
-		//};
-        //
-		//let maybe_output = self.code_exe_serv.as_ref().unwrap().send_exe_and_input(&code_exe_and_input);
-		//match maybe_output {
-		//	Ok(output_vec) => {
-		//
-		//		assert!(output_vec.len() <= 64);
-		//
-		//		let mut output_bytes = [0u8 ; 64];
-		//
-		//		for (ii, val) in output_vec.iter().enumerate() {
-		//			output_bytes[ii] = *val;
-		//		}
-		//
-		//		let actual_out = ARMSIMDOutputValues{ output_bytes: output_bytes, output_len: output_vec.len() };
-		//		//println!("woo hoo, we got an actual output {:?}", actual_out);
-		//		return actual_out;
-		//	}
-		//	Err(err) => {
-		//		panic!("Oh no, we got an IO error {}", err);
-		//	}
-		//}
-		
+		#[cfg(not(target_arch = "aarch64"))]
+		{
+			panic!("Cannot fuzz ARM code on non-ARM platform");
+		}
 	}
 
 	fn are_outputs_the_same(&self, o1 : &Self::FuzzerOutput, o2 : &Self::FuzzerOutput) -> bool {
