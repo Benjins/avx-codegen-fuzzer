@@ -301,9 +301,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										// TODO: HACK: FIXME: Blergh
 										#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 										{
-											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
-											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
-											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
 										}
 										
 										#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
@@ -326,9 +326,9 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										// TODO: HACK: FIXME: Blergh
 										#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 										{
-											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES[..]);
-											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES[..]);
-											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES[..])
+											(&mut exec_page.page[reloc_insert_offset_in_memory..reloc_insert_offset_in_memory+4]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+4..reloc_insert_offset_in_memory+8]).copy_from_slice(&NO_OP_BYTES_ARM[..]);
+											(&mut exec_page.page[reloc_insert_offset_in_memory+8..reloc_insert_offset_in_memory+12]).copy_from_slice(&NO_OP_BYTES_ARM[..])
 										}
 										
 										#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
