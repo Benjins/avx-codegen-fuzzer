@@ -81,9 +81,9 @@ impl ARMCodeFuzzerInputValues {
 	
 	pub fn read_from_str(serial : &str) -> Self {
 		let mut lines = serial.split('\n');
-		let num_i_vals = lines.nth(0).unwrap().parse::<usize>().unwrap();
+		let num_i_vals = lines.next().unwrap().parse::<usize>().unwrap();
 		
-		let i_vals_iter = lines.nth(0).unwrap().split(' ');
+		let i_vals_iter = lines.next().unwrap().trim().split(' ');
 		let mut i_vals = Vec::with_capacity(num_i_vals);
 		for i_val in i_vals_iter {
 			i_vals.push(i_val.parse::<i32>().unwrap());
