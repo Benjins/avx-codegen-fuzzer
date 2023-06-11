@@ -5,6 +5,8 @@ use std::io::Write as IOWrite;
 use std::collections::BTreeSet;
 //use std::time::{Duration, Instant};
 
+use std::sync::mpsc;
+
 use crate::parse_exe::parse_obj_file;
 use crate::exec_mem::ExecPage;
 
@@ -35,8 +37,77 @@ pub enum GenCodeResult {
 	RuntimeDiff(String)
 }
 
+// This is basically saying "send this data to this stdin handle" for a compiler invocation
+pub struct CompilerIOMessage_WriteStdin {
+	stdin : std::process::ChildStdin,
+	input : String
+}
+
+pub enum CompilerIOMessage {
+	WriteStdin(CompilerIOMessage_WriteStdin),
+	Exit
+}
+
+// This is meant to handle actually sending stdin to compilers that need it from a specific thread
+// We don't want to do this synchronously while waiting for the compiler output to finish, since that can deadlock
+// Previously, we just spawned a new thread each time we compiled something, but to avoid excess thread usage we're
+// trying to use a single thread as much as possible
+// TODO: Should we allow more than one IO thread, or does that not help perf?
+pub struct CompilerIOThread {
+	receiver : mpsc::Receiver<CompilerIOMessage>,
+}
+
+impl CompilerIOThread {
+	pub fn spawn_io_thread() -> (CompilerIOThreadHandle, std::thread::JoinHandle<()>) {
+		
+		let (tx, rx) : (mpsc::Sender<CompilerIOMessage>, mpsc::Receiver<CompilerIOMessage>) = mpsc::channel();
+		
+		let io_thread = CompilerIOThread {
+			receiver: rx
+		};
+		
+		let join_handle = std::thread::spawn(move || {
+			for msg in io_thread.receiver.iter() {
+				match msg {
+					CompilerIOMessage::WriteStdin(mut write_stdin) => {
+						write_stdin.stdin.write_all(write_stdin.input.as_bytes()).expect("Failed to write to stdin");
+					}
+					CompilerIOMessage::Exit => {
+						break;
+					}
+				}
+			}
+		});
+		
+		let io_thread_handle = CompilerIOThreadHandle::new(tx);
+		
+		return (io_thread_handle, join_handle);
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct CompilerIOThreadHandle {
+	sender : mpsc::Sender<CompilerIOMessage>
+}
+
+impl CompilerIOThreadHandle {
+	pub fn new(sender : mpsc::Sender<CompilerIOMessage>) -> Self {
+		Self {
+			sender: sender
+		}
+	}
+	
+	pub fn send(&self, msg : CompilerIOMessage) {
+		self.sender.send(msg).expect("could not send msg to compiler IO thread");
+	}
+	
+	pub fn kill_thread(&self) {
+		self.sender.send(CompilerIOMessage::Exit).expect("could not send kill msg to compiler IO thread");
+	}
+}
+
 // Returns the output of the process if successful, or the error code if not, or that it timed out
-fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _timeout_seconds : Option<i32>) -> ProcessResult {
+fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _timeout_seconds : Option<i32>, io_thread_handle : &CompilerIOThreadHandle) -> ProcessResult {
 	//print!("Running process {:?} with args {:?}\n", exe, args);
 	let mut child = Command::new(exe)
 		.args(args)
@@ -57,11 +128,19 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 	// read stdin in the meantime, causing a deadlock.
 	// Writing from another thread ensures that stdout is being read
 	// at the same time, avoiding the problem.
-	let mut stdin = child.stdin.take().expect("Failed to open stdin");
-	let input = input.to_string();
-	let join_handle: std::thread::JoinHandle<_> = std::thread::spawn(move || {
-		stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
+	//let mut stdin = child.stdin.take().expect("Failed to open stdin");
+	//let input = input.to_string();
+	//let join_handle: std::thread::JoinHandle<_> = std::thread::spawn(move || {
+	//	stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
+	//});
+	
+	let stdin = child.stdin.take().expect("Failed to open stdin");
+	let msg = CompilerIOMessage::WriteStdin(CompilerIOMessage_WriteStdin{
+		stdin: stdin,
+		input: input.to_string()
 	});
+
+	io_thread_handle.send(msg);
 	
 	//let compile_start = Instant::now();
 	//loop {
@@ -92,7 +171,7 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 	// TODO: Timeouts....gahhhh....
 	let output = child.wait_with_output().expect("could not read output of command");
 
-	join_handle.join().expect("The thread being joined has panicked");
+	//join_handle.join().expect("The thread being joined has panicked");
 	
 	if output.status.success() {
 		let proc_stdout = output.stdout;
@@ -108,7 +187,7 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 	}
 }
 
-pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilation>) -> GenCodeResult {
+pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilation>, io_thread_handle : &CompilerIOThreadHandle) -> GenCodeResult {
 	// TODO: better way?
 	//std::fs::write(&compiles[0].code_filename, code).expect("couldn't write to file?");
 	
@@ -119,7 +198,7 @@ pub fn test_generated_code_compilation(code : &str, compiles : &Vec<TestCompilat
 	//println!("----------------------------");
 	
 	for compile in compiles {
-		let compile_result = run_process_with_timeout(&compile.compiler_exe, &compile.compiler_args, code, Some(compile.timeout_seconds));
+		let compile_result = run_process_with_timeout(&compile.compiler_exe, &compile.compiler_args, code, Some(compile.timeout_seconds), io_thread_handle);
 
 		match compile_result {
 			ProcessResult::Error(err_code, stdout, stderr) => {

@@ -20,7 +20,7 @@ mod rand;
 
 mod compilation_config;
 use compilation_config::{test_generated_code_compilation, parse_compiler_config};
-use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode};
+use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode, CompilerIOThread, CompilerIOThreadHandle};
 
 mod x86_parse_spec;
 use x86_parse_spec::parse_intel_intrinsics_xml;
@@ -113,7 +113,8 @@ fn save_out_failure_info(orig_code : &str, min_code : &str, result : &GenCodeRes
 
 fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>(
 		input : ThreadInput, compilation_tests : &Vec<TestCompilation>, fuzz_mode : GenCodeFuzzMode,
-		total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>, num_bytes_fuzzed : Arc<AtomicUsize>
+		total_num_cases_done : Arc<AtomicUsize>, total_bugs_found : Arc<AtomicUsize>, num_bytes_fuzzed : Arc<AtomicUsize>,
+		io_thread_handle : CompilerIOThreadHandle
 	)
 	where FuzzType : CodegenFuzzer<ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,FuzzerOutput>, FuzzerOutput: Clone + std::fmt::Debug, CodegenCtx: Clone {
 	
@@ -130,7 +131,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 		//println!("{}", cpp_code);
 		//println!("---------------------------");
 
-		let res = test_generated_code_compilation(&cpp_code, compilation_tests);
+		let res = test_generated_code_compilation(&cpp_code, compilation_tests, &io_thread_handle);
 
 		// TODO: UTF-8, bytes not necessarily same as chars, idk what rust gives but we only do ascii in this house so w/e
 		let num_cpp_bytes = cpp_code.len();
@@ -142,7 +143,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 			GenCodeResult::CompilerFailure(_err_code,_,_) => {
 				let minim_checker = |this_fuzzer : &FuzzType, ctx: &CodegenCtx| {
 					let (minim_cpp_code, _) = this_fuzzer.generate_cpp_code(ctx);
-					let minim_res = test_generated_code_compilation(&minim_cpp_code, compilation_tests);
+					let minim_res = test_generated_code_compilation(&minim_cpp_code, compilation_tests, &io_thread_handle);
 					return matches!(minim_res, GenCodeResult::CompilerFailure(_,_,_));
 				};
 				
@@ -193,7 +194,7 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 					if let Some(bad_input) = bad_input {
 						let minim_checker = |this_fuzzer : &FuzzType, ctx: &CodegenCtx| {
 							let (minim_cpp_code, minim_code_meta) = this_fuzzer.generate_cpp_code(ctx);
-							let minim_res = test_generated_code_compilation(&minim_cpp_code, compilation_tests);
+							let minim_res = test_generated_code_compilation(&minim_cpp_code, compilation_tests, &io_thread_handle);
 							if let GenCodeResult::Success(minim_compiled_outputs) = minim_res {
 
 								// TODO: Code dup with above
@@ -292,6 +293,8 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
+	let (io_thread_handle, io_thread_join_handle) = CompilerIOThread::spawn_io_thread();
+	
 	for thread_id in 0..num_threads {
 		let mut compilation_tests = compilation_tests.clone();
 		
@@ -319,9 +322,11 @@ fn fuzz_x86_simd_codegen(config_filename : &str, num_threads : u32) {
 			type_to_intrinsics_map : own_type_to_intrinsics_map
 		};
 		
+		let io_thread_handle = io_thread_handle.clone();
+		
 		let thread_handle = std::thread::spawn(move || {
 			fuzz_simd_codegen_loop::<X86CodegenFuzzer, X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuzzerCodeMetadata, X86CodeFuzzerInputValues, X86SIMDOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed, io_thread_handle);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -397,7 +402,9 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 	
 	let fuzzer = ARMCodegenFuzzer::new_fuzzer_state(repro_input);
 	
-	let res = test_generated_code_compilation(&repro_code, &compilation_tests);
+	let (io_thread_handle, io_thread_join_handle) = CompilerIOThread::spawn_io_thread();
+	
+	let res = test_generated_code_compilation(&repro_code, &compilation_tests, &io_thread_handle);
 
 	match res {
 		GenCodeResult::Success(ref compiled_outputs) => {
@@ -443,6 +450,10 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 			std::process::exit(1);
 		}
 	}
+	
+	io_thread_handle.kill_thread();
+	
+	io_thread_join_handle.join().expect("could not join compiler IO thread");
 }
 
 fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
@@ -496,6 +507,8 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		}
 	}
 	
+	let (io_thread_handle, io_thread_join_handle) = CompilerIOThread::spawn_io_thread();
+	
 	// This should ensure subsequent runs don't re-use the same seeds for everything
 	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
@@ -511,6 +524,8 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
 		
+		let io_thread_handle = io_thread_handle.clone();
+		
 		let thread_handle = std::thread::spawn(move || {
 			
 			let thread_input = ARMCodegenFuzzerThreadInput {
@@ -521,7 +536,7 @@ fn fuzz_arm_simd_codegen(config_filename : &str, num_threads : u32) {
 			};
 			
 			fuzz_simd_codegen_loop::<ARMCodegenFuzzer, ARMCodegenFuzzerThreadInput, ARMSIMDCodegenCtx, ARMCodegenFuzzerCodeMetadata, ARMCodeFuzzerInputValues, ARMSIMDOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed, io_thread_handle);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -567,6 +582,8 @@ fn fuzz_loop_codegen(config_filename : &str, num_threads : u32) {
 	
 	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
+	let (io_thread_handle, io_thread_join_handle) = CompilerIOThread::spawn_io_thread();
+	
 	for thread_id in 0..num_threads {
 		let num_cases_state = num_cases_state.clone();
 		let num_bugs_found = num_bugs_found.clone();
@@ -576,6 +593,8 @@ fn fuzz_loop_codegen(config_filename : &str, num_threads : u32) {
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
 		
+		let io_thread_handle = io_thread_handle.clone();
+		
 		let thread_handle = std::thread::spawn(move || {
 			
 			let thread_input = LoopFuzzerThreadInput {
@@ -583,7 +602,7 @@ fn fuzz_loop_codegen(config_filename : &str, num_threads : u32) {
 			};
 			
 			fuzz_simd_codegen_loop::<LoopFuzzer, LoopFuzzerThreadInput, LoopCodegenCtx, LoopFuzzerCodeMetadata, LoopFuzzerInputValues, LoopFuzzerOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed, io_thread_handle);
 		});
 		thread_handles.push(thread_handle);
 	}
@@ -628,6 +647,8 @@ fn fuzz_asm_codegen(config_filename : &str, num_threads : u32) {
 	
 	let initial_time = get_timestamp_for_seed();//unsafe { _rdtsc() };
 	
+	let (io_thread_handle, io_thread_join_handle) = CompilerIOThread::spawn_io_thread();
+	
 	let mut thread_handles = Vec::<std::thread::JoinHandle<_>>::new();
 	for thread_id in 0..num_threads {
 		let num_cases_state = num_cases_state.clone();
@@ -638,6 +659,8 @@ fn fuzz_asm_codegen(config_filename : &str, num_threads : u32) {
 		// Some prime numbers beause they're better, or so I hear
 		let initial_seed = ((thread_id as u64) + 937) * 241 + initial_time;
 		
+		let io_thread_handle = io_thread_handle.clone();
+		
 		let thread_handle = std::thread::spawn(move || {
 			
 			let thread_input = AsmFuzzerThreadInput {
@@ -645,7 +668,7 @@ fn fuzz_asm_codegen(config_filename : &str, num_threads : u32) {
 			};
 			
 			fuzz_simd_codegen_loop::<AsmFuzzer, AsmFuzzerThreadInput, AsmCodegenCtx, AsmFuzzerCodeMetadata, AsmFuzzerInputValues, AsmFuzzerOutputValues>(
-				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed);
+				thread_input, &compilation_tests, fuzz_mode, num_cases_state, num_bugs_found, num_bytes_fuzzed, io_thread_handle);
 		});
 		thread_handles.push(thread_handle);
 	}
