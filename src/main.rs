@@ -18,6 +18,9 @@ use sha2::{Sha256, Digest};
 
 mod rand;
 
+mod aligned_slice;
+use aligned_slice::AlignedSlice;
+
 mod compilation_config;
 use compilation_config::{test_generated_code_compilation, parse_compiler_config};
 use compilation_config::{TestCompilation, GenCodeResult, GenCodeFuzzMode, CompilerIOThread, CompilerIOThreadHandle};

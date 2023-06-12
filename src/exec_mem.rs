@@ -103,9 +103,9 @@ impl ExecPage {
 	}
 	
 	#[cfg(target_arch = "x86_64")]
-	pub fn execute_with_args_256i(&self, i_vals: &[AlignedWrapper<i32>], f_vals: &[AlignedWrapper<f32>], d_vals: &[AlignedWrapper<f64>]) -> __m256i {
+	pub fn execute_with_args_256i(&self, i_vals: &[i32], f_vals: &[f32], d_vals: &[f64]) -> __m256i {
 		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
-		let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> __m256i = unsafe { std::mem::transmute(func_ptr) };
+		let func: unsafe extern "C" fn(*const i32, *const f32, *const f64) -> __m256i = unsafe { std::mem::transmute(func_ptr) };
 
 		let ret = unsafe {
 			func(i_vals.as_ptr(), f_vals.as_ptr(), d_vals.as_ptr())
@@ -115,9 +115,9 @@ impl ExecPage {
 	}
 
 	#[cfg(target_arch = "x86_64")]
-	pub fn execute_with_args_128i(&self, i_vals: &[AlignedWrapper<i32>], f_vals: &[AlignedWrapper<f32>], d_vals: &[AlignedWrapper<f64>]) -> __m128i {
+	pub fn execute_with_args_128i(&self, i_vals: &[i32], f_vals: &[f32], d_vals: &[f64]) -> __m128i {
 		let func_ptr = unsafe { self.page.as_ptr().add(self.func_offset) };
-		let func: unsafe extern "C" fn(*const AlignedWrapper<i32>, *const AlignedWrapper<f32>, *const AlignedWrapper<f64>) -> __m128i = unsafe { std::mem::transmute(func_ptr) };
+		let func: unsafe extern "C" fn(*const i32, *const f32, *const f64) -> __m128i = unsafe { std::mem::transmute(func_ptr) };
 
 		let ret = unsafe {
 			func(i_vals.as_ptr(), f_vals.as_ptr(), d_vals.as_ptr())

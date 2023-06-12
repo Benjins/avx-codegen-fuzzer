@@ -7,6 +7,8 @@ use std::fmt::Write;
 use crate::codegen_fuzzing::CodegenFuzzer;
 use crate::rand::Rand;
 
+use crate::aligned_slice::AlignedSlice;
+
 use crate::x86_codegen_ctx::X86SIMDCodegenCtx;
 use crate::x86_codegen_ctx::{generate_cpp_code_from_x86_codegen_ctx, generate_x86_codegen_ctx};
 
@@ -33,30 +35,36 @@ pub struct X86CodegenFuzzer {
 	outer_rng : Rand,
 }
 
+const X86_SIMD_ALIGNMENT : usize = 32;
+
 #[derive(Clone, Debug)]
 pub struct X86CodeFuzzerInputValues {
-	pub i_vals : Vec<AlignedWrapper<i32>>,
-	pub f_vals : Vec<AlignedWrapper<f32>>,
-	pub d_vals : Vec<AlignedWrapper<f64>>
+	pub i_vals : AlignedSlice<i32, X86_SIMD_ALIGNMENT>,
+	pub f_vals : AlignedSlice<f32, X86_SIMD_ALIGNMENT>,
+	pub d_vals : AlignedSlice<f64, X86_SIMD_ALIGNMENT>
 }
 
 impl X86CodeFuzzerInputValues {
 	pub fn write_to_str(&self) -> String {
 		let mut out_str = String::with_capacity(4096);
 
-		write!(out_str, "{}\n", self.i_vals.len()).expect("");
-		for i_val in self.i_vals.iter() {
-			write!(out_str, "{} ", i_val.0).expect("");
+		let i_vals = self.i_vals.as_slice();
+		let f_vals = self.f_vals.as_slice();
+		let d_vals = self.d_vals.as_slice();
+
+		write!(out_str, "{}\n", i_vals.len()).expect("");
+		for i_val in i_vals.iter() {
+			write!(out_str, "{} ", i_val).expect("");
 		}
 		
-		write!(out_str, "{}\n", self.f_vals.len()).expect("");
-		for f_val in self.f_vals.iter() {
-			write!(out_str, "{} ", f_val.0).expect("");
+		write!(out_str, "{}\n", f_vals.len()).expect("");
+		for f_val in f_vals.iter() {
+			write!(out_str, "{} ", f_val).expect("");
 		}
 		
-		write!(out_str, "{}\n", self.d_vals.len()).expect("");
-		for d_val in self.d_vals.iter() {
-			write!(out_str, "{} ", d_val.0).expect("");
+		write!(out_str, "{}\n", d_vals.len()).expect("");
+		for d_val in d_vals.iter() {
+			write!(out_str, "{} ", d_val).expect("");
 		}
 		
 		return out_str;
@@ -72,8 +80,9 @@ pub enum X86SIMDOutputValues {
 fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num_d_vals : usize) -> X86CodeFuzzerInputValues {
 	let mut rng = Rand::default();
 
-	let mut i_vals = Vec::<i32>::with_capacity(num_i_vals);
-	for _ in 0..num_i_vals {
+	let init_i_val = 0i32;
+	let mut i_vals = AlignedSlice::new(num_i_vals, &init_i_val);
+	for i_val in i_vals.as_slice_mut().iter_mut() {
 		let rand_val = match (rng.rand() % 16) {
 			0 =>  0,
 			1 =>  1,
@@ -81,20 +90,20 @@ fn generate_random_input_for_program(num_i_vals : usize, num_f_vals : usize, num
 			3 => -1,
 			_ => rng.rand() as i32
 		};
-		i_vals.push(rand_val);
+		*i_val = rand_val;
 	}
 	
+	let init_f_val = 0f32;
+	let mut f_vals = AlignedSlice::new(num_f_vals, &init_f_val);
+	for f_val in f_vals.as_slice_mut().iter_mut() {
+		*f_val = rng.randf() * 2.0 - 1.0;
+	}
 	
-	let mut f_vals = Vec::<f32>::with_capacity(num_f_vals);
-	for _ in 0..num_f_vals { f_vals.push(rng.randf() * 2.0 - 1.0); }
-	
-	let mut d_vals = Vec::<f64>::with_capacity(num_d_vals);
-	for _ in 0..num_d_vals { d_vals.push((rng.randf() * 2.0 - 1.0) as f64); }
-
-	// Make aligned wrapper
-	let i_vals = i_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
-	let f_vals = f_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
-	let d_vals = d_vals.into_iter().map(|x| { AlignedWrapper(x) }).collect::<Vec<_>>();
+	let init_d_val = 0f64;
+	let mut d_vals = AlignedSlice::new(num_d_vals, &init_d_val);
+	for d_val in d_vals.as_slice_mut().iter_mut() {
+		*d_val = (rng.randf() * 2.0 - 1.0) as f64;
+	}
 
 	return X86CodeFuzzerInputValues { i_vals: i_vals, f_vals: f_vals, d_vals: d_vals };
 }
@@ -217,12 +226,12 @@ impl CodegenFuzzer<X86CodegenFuzzerThreadInput, X86SIMDCodegenCtx, X86CodegenFuz
 		{
 			match code_meta.return_type {
 				X86SIMDType::M256i(_) => {
-					let ret = exec_page.execute_with_args_256i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
+					let ret = exec_page.execute_with_args_256i(input.i_vals.as_slice(), input.f_vals.as_slice(), input.d_vals.as_slice());
 					let bytes_256 : std::simd::u8x32 = ret.try_into().unwrap();
 					return Self::FuzzerOutput::SIMD256Bit(bytes_256);
 				},
 				X86SIMDType::M128i(_) => {
-					let ret = exec_page.execute_with_args_128i(&input.i_vals[..], &input.f_vals[..], &input.d_vals[..]);
+					let ret = exec_page.execute_with_args_128i(input.i_vals.as_slice(), input.f_vals.as_slice(), input.d_vals.as_slice());
 					let bytes_128 : std::simd::u8x16 = ret.try_into().unwrap();
 					return Self::FuzzerOutput::SIMD128Bit(bytes_128);
 				},
