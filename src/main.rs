@@ -428,8 +428,8 @@ fn repro_arm_simd_codegen(config_filename : &str, repro_filename : &str, meta_fi
 					std::fs::write("compiled_flat_code.bin", &compiled_out.code_page.page[..]).expect("Couldn't dump flat code binary");
 
 					if !fuzzer.are_outputs_the_same(first_output, &output) {
-						println!("output1 = {:?}", first_output);
-						println!("output2 = {:?}", output);
+						println!("output1 = {:?}", &first_output.output_bytes[..first_output.output_len]);
+						println!("output2 = {:?}", &output.output_bytes[..output.output_len]);
 						all_outputs_same = false;
 						break;
 					}

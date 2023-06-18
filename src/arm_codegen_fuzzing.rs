@@ -264,6 +264,7 @@ fn encode_simd_count(count : u32) -> u32 {
 
 fn decode_simd_count(encoded_count : u32) -> i32 {
 	match encoded_count {
+		0 => 0,
 		1 => 1,
 		2 => 2,
 		3 => 4,
