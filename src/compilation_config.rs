@@ -3,7 +3,7 @@
 use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
 use std::collections::BTreeSet;
-//use std::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 
 use std::sync::mpsc;
 
@@ -107,7 +107,7 @@ impl CompilerIOThreadHandle {
 }
 
 // Returns the output of the process if successful, or the error code if not, or that it timed out
-fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _timeout_seconds : Option<i32>, io_thread_handle : &CompilerIOThreadHandle) -> ProcessResult {
+fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeout_seconds : Option<i32>, io_thread_handle : &CompilerIOThreadHandle) -> ProcessResult {
 	//print!("Running process {:?} with args {:?}\n", exe, args);
 	let mut child = Command::new(exe)
 		.args(args)
@@ -116,24 +116,8 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 		.stderr(Stdio::piped())
 		.spawn()
 		.expect("command failed to start");
-
-	//let mut stdin = child.stdin.take().expect("Failed to open stdin");
-	//stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
-	//drop(stdin);
-
-
-	// https://doc.rust-lang.org/std/process/index.html
-	// If the child process fills its stdout buffer, it may end up
-	// waiting until the parent reads the stdout, and not be able to
-	// read stdin in the meantime, causing a deadlock.
-	// Writing from another thread ensures that stdout is being read
-	// at the same time, avoiding the problem.
-	//let mut stdin = child.stdin.take().expect("Failed to open stdin");
-	//let input = input.to_string();
-	//let join_handle: std::thread::JoinHandle<_> = std::thread::spawn(move || {
-	//	stdin.write_all(input.as_bytes()).expect("Failed to write to stdin");
-	//});
 	
+	// Send the stdin to the IO thread: this is to ensure that we don't deadlock waiting for buffers to flush while we aren't reading stdout
 	let stdin = child.stdin.take().expect("Failed to open stdin");
 	let msg = CompilerIOMessage::WriteStdin(CompilerIOMessage_WriteStdin{
 		stdin: stdin,
@@ -142,31 +126,31 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, _time
 
 	io_thread_handle.send(msg);
 	
-	//let compile_start = Instant::now();
-	//loop {
-	//	if let Some(timeout_seconds) = timeout_seconds {
-	//		if Instant::now().duration_since(compile_start) > Duration::from_secs(timeout_seconds as u64) {
-	//			print!("'{}' process timed out (if Windows maybe check we aren't leaking something?)\n", exe);
-	//			let kill_res = child.kill();
-	//			
-	//			if kill_res.is_err() {
-	//				print!("Got error when killing process {:?}\n", kill_res);
-	//			}
-	//
-	//			// Let's see if this helps...
-	//			std::thread::sleep(Duration::from_millis(500));
-	//			return ProcessResult::Timeout;
-	//		}
-	//	}
-	//	
-	//	match child.try_wait() {
-	//		Ok(Some(_)) => { break; }
-	//		Ok(None) => {
-	//			std::thread::sleep(Duration::from_millis(100));
-	//		}
-	//		Err(e) => panic!("error attempting to wait: {}", e)
-	//	}
-	//}
+	let compile_start = Instant::now();
+	loop {
+		if let Some(timeout_seconds) = timeout_seconds {
+			if Instant::now().duration_since(compile_start) > Duration::from_secs(timeout_seconds as u64) {
+				print!("'{}' process timed out (if Windows maybe check we aren't leaking something?)\n", exe);
+				let kill_res = child.kill();
+
+				if kill_res.is_err() {
+					print!("Got error when killing process {:?}\n", kill_res);
+				}
+
+				// Let's see if this helps...
+				std::thread::sleep(Duration::from_millis(500));
+				return ProcessResult::Timeout;
+			}
+		}
+
+		match child.try_wait() {
+			Ok(Some(_)) => { break; }
+			Ok(None) => {
+				std::thread::sleep(Duration::from_millis(100));
+			}
+			Err(e) => panic!("error attempting to wait: {}", e)
+		}
+	}
 
 	// TODO: Timeouts....gahhhh....
 	let output = child.wait_with_output().expect("could not read output of command");
