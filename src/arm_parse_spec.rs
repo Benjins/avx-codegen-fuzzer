@@ -23,6 +23,8 @@ const MITIGATION_AVOID_REINTERPRET : bool = false;
 // I think this was fixed in 4c3e51ecfa3337be2d091392d6174449aeb35aa3
 const MITIGATION_AVOID_A64_ONLY_CVT_FLOAT : bool = false;
 
+// A bug in LLVM's SCCP when synthesizing constant values for a vector type
+const MITIGATION_AVOID_CTLZ : bool = true;
 
 //pub fn type_is_bfloat(type_name : &str) -> bool {
 //	return type_name.contains("bfloat");
@@ -214,6 +216,21 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	disallowed_intrinsics.insert("vcvtah_u64_f16");
 	disallowed_intrinsics.insert("vcgezh_f16");
 	disallowed_intrinsics.insert("vcvtph_u32_f16");
+
+	if MITIGATION_AVOID_CTLZ {
+		disallowed_intrinsics.insert("vclz_s8");
+		disallowed_intrinsics.insert("vclz_u8");
+		disallowed_intrinsics.insert("vclz_s16");
+		disallowed_intrinsics.insert("vclz_s32");
+		disallowed_intrinsics.insert("vclz_u16");
+		disallowed_intrinsics.insert("vclz_u32");
+		disallowed_intrinsics.insert("vclzq_s8");
+		disallowed_intrinsics.insert("vclzq_u8");
+		disallowed_intrinsics.insert("vclzq_s16");
+		disallowed_intrinsics.insert("vclzq_s32");
+		disallowed_intrinsics.insert("vclzq_u16");
+		disallowed_intrinsics.insert("vclzq_u32");
+	}
 
 	return disallowed_intrinsics;
 }
