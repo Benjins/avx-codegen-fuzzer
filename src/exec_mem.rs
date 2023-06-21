@@ -57,14 +57,12 @@ impl ExecPage {
 		let current_value_int = i32::from_le_bytes(current_value_bytes.try_into().expect(""));
 
 		let imm_lo = (value & 0x03); // bits [0:1]
-		let imm_hi = ((value >> 2) & ((1 << 17) - 1)) as usize; // bits [2:19]
+		let imm_hi = (value >> 2) & ((1 << 17) - 1); // bits [2:19]
 
 		let imm_lo_positioned = ((imm_lo as u32) << 29) as i32;
+		let imm_hi_positioned = ((imm_hi as u32) << 5) as i32;
 
-		// TODO:
-		assert!(imm_hi == 0);
-
-		let new_value_int = current_value_int | imm_lo_positioned;
+		let new_value_int = current_value_int | imm_lo_positioned | imm_hi_positioned;
 		
 		let new_value_bytes = new_value_int.to_le_bytes();
 		self.page[write_offset..write_offset+4].clone_from_slice(&new_value_bytes[..]);
