@@ -141,7 +141,24 @@ fn fuzz_simd_codegen_loop<FuzzType,ThreadInput,CodegenCtx,CodeMeta,FuzzerInput,F
 
 		match res {
 			GenCodeResult::CompilerTimeout => {
-				todo!();
+				let minim_checker = |this_fuzzer : &FuzzType, ctx: &CodegenCtx| {
+					let (minim_cpp_code, _) = this_fuzzer.generate_cpp_code(ctx);
+					let minim_res = test_generated_code_compilation(&minim_cpp_code, compilation_tests, &io_thread_handle);
+					return matches!(minim_res, GenCodeResult::CompilerTimeout);
+				};
+
+				if let Some(min_ctx) = fuzzer.try_minimize(codegen_ctx, minim_checker) {
+					let (min_cpp_code,min_code_meta) = fuzzer.generate_cpp_code(&min_ctx);
+					let min_code_meta = fuzzer.save_meta_to_string(&min_code_meta);
+					save_out_failure_info(&cpp_code, &min_cpp_code, &res, &min_code_meta);
+				}
+				else {
+					println!("Could not minimize for whatever reason");
+					let code_meta = fuzzer.save_meta_to_string(&code_meta);
+					save_out_failure_info(&cpp_code, &cpp_code, &res, &code_meta);
+				}
+
+				total_bugs_found.fetch_add(1, Ordering::SeqCst);
 			}
 			GenCodeResult::CompilerFailure(_err_code,_,_) => {
 				let minim_checker = |this_fuzzer : &FuzzType, ctx: &CodegenCtx| {
