@@ -261,22 +261,48 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 										let reloc_relative_offset_in_pages = (reloc_offset_in_memory >> 12) - (reloc_insert_offset_in_memory >> 12);
 										exec_page.fix_up_arm_adrp_redirect(reloc_insert_offset_in_memory as usize, reloc_relative_offset_in_pages as i32);
 									}
-									// LDR offset
-									else if extra_data == 299 {
+									// LDR offset for 8-bit
+									else if extra_data == 278 {
+										assert!(reloc_offset_in_memory >= 0);
+										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
+										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary;
+										//println!("encoded_reloc_offset_from_page = {}", encoded_reloc_offset_from_page);
+										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 10);
+									}
+									// LDR offset for 16-bit
+									else if extra_data == 284 {
+										assert!(reloc_offset_in_memory >= 0);
+										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
+										assert!(reloc_offset_from_page_boundary % 2 == 0);
+										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 1;
+										//println!("encoded_reloc_offset_from_page = {}", encoded_reloc_offset_from_page);
+										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 10);
+									}
+									// LDR offset for 32-bit
+									else if extra_data == 285 {
 										assert!(reloc_offset_in_memory >= 0);
 										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
 										assert!(reloc_offset_from_page_boundary % 4 == 0);
 										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 2;
-										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 8);
+										//println!("encoded_reloc_offset_from_page = {}", encoded_reloc_offset_from_page);
+										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 10);
 									}
-									// LDR offset for d* registers
+									// LDR offset for 64-bit
 									else if extra_data == 286 {
 										assert!(reloc_offset_in_memory >= 0);
 										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
 										assert!(reloc_offset_from_page_boundary % 8 == 0);
-										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 2;
+										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 3;
 										//println!("encoded_reloc_offset_from_page = {}", encoded_reloc_offset_from_page);
-										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 9);
+										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 10);
+									}
+									// LDR offset for 128-bit
+									else if extra_data == 299 {
+										assert!(reloc_offset_in_memory >= 0);
+										let reloc_offset_from_page_boundary = (reloc_offset_in_memory & 0xFFF);
+										assert!(reloc_offset_from_page_boundary % 16 == 0);
+										let encoded_reloc_offset_from_page = reloc_offset_from_page_boundary >> 4;
+										exec_page.fix_up_arm_ldr_offset_redirect(reloc_insert_offset_in_memory as usize, encoded_reloc_offset_from_page as i32, 10);
 									}
 									// ADD immediate operand for adrp lower bits
 									else if extra_data == 277 {
