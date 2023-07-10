@@ -46,6 +46,10 @@ const MITIGATION_AVOID_VPBROADCAST : bool = false;
 // Fixed in 07b86ab138bf8be8cb331015cd2b9775c6856ac6
 const MITIGATION_AVOID_8BIT_ABS : bool = false;
 
+// On GCC as of June 9, 2023, there is a crash when combining mul and abs
+const MITIGATION_AVOID_32BIT_ABS : bool = false;
+
+
 // On GCC as of 13.1, there is some logic that incorrectly folds
 // VPAND and VPTEST when the carry bit is checked
 // Fixed in 3635e8c67e13e3da7e1e23a617dd9952218e93e0
@@ -88,6 +92,11 @@ fn get_disallowed_intrinsics() -> BTreeSet<&'static str> {
 	if MITIGATION_AVOID_8BIT_ABS {
 		disallowed_intrinsics.insert("_mm_abs_epi8");
 		disallowed_intrinsics.insert("_mm256_abs_epi8");
+	}
+
+	if MITIGATION_AVOID_32BIT_ABS {
+		disallowed_intrinsics.insert("_mm_abs_epi32");
+		disallowed_intrinsics.insert("_mm256_abs_epi32");
 	}
 
 	if MITIGATION_AVOID_TESTC {
