@@ -305,7 +305,7 @@ fn decode_return_type(return_type : u32) -> ARMSIMDType {
 		ARMSIMDType::Primitive(base_type)
 	}
 	else {
-		if array_len == 0 {
+		if array_len <= 1 {
 			ARMSIMDType::SIMD(base_type, simd_count)
 		}
 		else {
