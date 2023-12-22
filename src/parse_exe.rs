@@ -93,7 +93,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 		forbidden_sections
 	};
 
-	std::fs::write("latest_obj_file.o", bin_data).expect("");
+	//std::fs::write("latest_obj_file.o", bin_data).expect("");
 
 	for section in obj_file.sections() {
 		let section_name = section.name();
@@ -159,7 +159,7 @@ pub fn parse_obj_file(bin_data : &[u8], func_name : &str) -> Option<ExecPage> {
 			//println!("Symbol name {}", symbol_name);
 			if symbol_name == func_name {
 				let addr = symbol.address() as usize;
-				let mut exec_page = ExecPage::new(8);
+				let mut exec_page = ExecPage::new(bytes_loaded_into_memory.len() / (16*1024) + 1);
 				let text_offset_in_memory = section_to_memory_addr.get(&section.index()).unwrap();
 				//println!("Bytes = {:02X?}", &bytes_loaded_into_memory[..]);
 				//println!("Func {} at offset {}", func_name, *text_offset_in_memory + addr);

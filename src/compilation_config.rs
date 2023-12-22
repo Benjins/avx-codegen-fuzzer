@@ -2,6 +2,7 @@
 
 use std::process::{Command, Stdio};
 use std::io::Write as IOWrite;
+use std::io::Read as IORead;
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
@@ -118,7 +119,7 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeo
 		.expect("command failed to start");
 	
 	// Send the stdin to the IO thread: this is to ensure that we don't deadlock waiting for buffers to flush while we aren't reading stdout
-	let stdin = child.stdin.take().expect("Failed to open stdin");
+	let stdin = child.stdin.take().expect("Failed to open child stdin");
 	let msg = CompilerIOMessage::WriteStdin(CompilerIOMessage_WriteStdin{
 		stdin: stdin,
 		input: input.to_string()
@@ -126,6 +127,10 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeo
 
 	io_thread_handle.send(msg);
 	
+	// https://users.rust-lang.org/t/weird-interaction-between-stdio-piped-and-child-try-wait/65898
+	let mut stdout = child.stdout.take().expect("Failed to open child stdout");
+	let mut stdout_bytes : Vec<u8> = Vec::with_capacity(8192);
+
 	let compile_start = Instant::now();
 	loop {
 		if let Some(timeout_seconds) = timeout_seconds {
@@ -146,25 +151,38 @@ fn run_process_with_timeout(exe : &str, args : &Vec<String>, input : &str, timeo
 		match child.try_wait() {
 			Ok(Some(_)) => { break; }
 			Ok(None) => {
+				const CHUNK_BYTE_SIZE : usize = 4096;
+
+				// Child isn't finished, try reading some bytes from its stdout
+				loop {
+					let mut buf = [0; CHUNK_BYTE_SIZE];
+					let num_bytes = stdout.read(&mut buf).expect("Failed to read child stdout bytes");
+					stdout_bytes.extend_from_slice(&buf[..num_bytes]);
+
+					// We probably need to wait to read some more,
+					// so don't try to keep reading
+					if num_bytes < CHUNK_BYTE_SIZE {
+						break;
+					}
+				}
+
 				std::thread::sleep(Duration::from_millis(100));
 			}
 			Err(e) => panic!("error attempting to wait: {}", e)
 		}
 	}
 
-	// TODO: Timeouts....gahhhh....
-	let output = child.wait_with_output().expect("could not read output of command");
-
-	//join_handle.join().expect("The thread being joined has panicked");
+	let status = child.wait().expect("Could not finish waiting for child");
+	stdout.read_to_end(&mut stdout_bytes).expect("Could not read remaining bytes from child stdout");
 	
-	if output.status.success() {
-		let proc_stdout = output.stdout;
-		return ProcessResult::Success(proc_stdout);
+	if status.success() {
+		return ProcessResult::Success(stdout_bytes);
 	}
 	else {
-		let status_code = output.status.code().expect("failed to get exit code");
+		let status_code = status.code().expect("failed to get exit code");
 		//let proc_stdout = String::from_utf8_lossy(&output.stdout);
-		let proc_stderr = String::from_utf8_lossy(&output.stderr);
+		// TODO:
+		let proc_stderr = "".to_string();//String::from_utf8_lossy(&output.stderr);
 		// TODO: stdout no longer printable since it's code output
 		// stderr still good tho
 		return ProcessResult::Error(status_code, "".to_string(), proc_stderr.to_string());
